@@ -108,6 +108,27 @@ def test_collections_and_payments():
     logout()
 
 
+def test_permissions_for_collections_and_accounting():
+    print('\n🔍 Testing permission enforcement for accounting & collections...')
+    setup_test_data()
+    # create a waiter user
+    client.post('/auth/login', data={'username':'admin','password':'admin'})
+    # create waiter
+    client.post('/admin/api/users', json={'username':'waiter','password':'waiter','role':'waiter'})
+    client.get('/auth/logout')
+
+    # login as waiter
+    client.post('/auth/login', data={'username':'waiter','password':'waiter'})
+    # waiter should NOT be able to create transaction
+    res = client.post('/admin/api/transactions', data=json.dumps({'transaction_type':'income','amount':10}), content_type='application/json')
+    assert res.status_code == 403
+    # waiter should NOT be able to create collection
+    res = client.post('/admin/api/collections', data=json.dumps({'customer':'X','total':10}), content_type='application/json')
+    assert res.status_code == 403
+    client.get('/auth/logout')
+    print('  ✓ Permission enforcement for accounting & collections works (waiter denied)')
+
+
 if __name__ == '__main__':
     ok = True
     try:

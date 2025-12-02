@@ -513,6 +513,73 @@ async function deleteUser(id){
 
 fetchUsers();
 </script>
+<!-- Collection Detail / Payment Modal -->
+<div class="modal fade" id="collectionDetailModal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog modal-lg">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Collection Details</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<div id="collection-detail-body">
+					<p><strong>Customer:</strong> <span id="md-customer"></span></p>
+					<p><strong>Phone:</strong> <span id="md-phone"></span></p>
+					<p><strong>Total:</strong> <span id="md-total"></span> &nbsp; <strong>Paid:</strong> <span id="md-paid"></span> &nbsp; <strong>Balance:</strong> <span id="md-balance"></span></p>
+					<hr>
+					<h6>Payments</h6>
+					<div id="md-payments-list">No payments yet</div>
+					<hr>
+					<h6>Add Payment</h6>
+					<form id="md-payment-form" class="row g-2">
+						<input type="hidden" id="md-collection-id">
+						<div class="col-md-4"><input id="md-pay-amount" class="form-control" type="number" step="0.01" placeholder="Amount"></div>
+						<div class="col-md-4"><input id="md-pay-method" class="form-control" placeholder="Method (cash/card)"></div>
+						<div class="col-md-4"><button class="btn btn-primary" type="submit">Record Payment</button></div>
+					</form>
+				</div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+			</div>
+		</div>
+	</div>
+ </div>
+
+<script>
+// modal helper
+async function openCollectionModal(id){
+	try{
+		const res = await fetch('/admin/api/collections/' + id, {headers:{'X-CSRFToken': csrfToken}});
+		if(!res.ok) return alert('Unable to load collection');
+		const c = await res.json();
+		document.getElementById('md-collection-id').value = c.id;
+		document.getElementById('md-customer').innerText = c.customer || '';
+		document.getElementById('md-phone').innerText = c.phone || '';
+		document.getElementById('md-total').innerText = (c.total||0).toFixed(2);
+		document.getElementById('md-paid').innerText = (c.paid||0).toFixed(2);
+		document.getElementById('md-balance').innerText = (c.balance||0).toFixed(2);
+		const pl = document.getElementById('md-payments-list');
+		if(!Array.isArray(c.payments) || c.payments.length===0){ pl.innerHTML = '<p>No payments yet</p>'; } else {
+			pl.innerHTML = '<ul class="list-group">' + c.payments.map(p=>`<li class="list-group-item">${p.created_at||''} — ${p.amount} (${p.method}) by ${p.received_by||''}</li>`).join('') + '</ul>';
+		}
+		new bootstrap.Modal(document.getElementById('collectionDetailModal')).show();
+	}catch(e){ console.warn(e); alert('Error loading collection'); }
+}
+
+document.getElementById('md-payment-form').addEventListener('submit', async (e)=>{
+	e.preventDefault();
+	const id = document.getElementById('md-collection-id').value;
+	const amount = Number(document.getElementById('md-pay-amount').value||0);
+	const method = document.getElementById('md-pay-method').value||'cash';
+	if(!amount || amount<=0){ return alert('Enter valid amount'); }
+	const res = await fetch('/admin/api/collections/' + id + '/payment', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify({amount: amount, method: method})});
+	if(res.ok){ alert('Payment recorded'); fetchCollections(); fetchAccountingSummary(); bootstrap.Modal.getInstance(document.getElementById('collectionDetailModal')).hide(); } else { alert('Payment failed'); }
+});
+
+// override openCollection used earlier
+function openCollection(id){ openCollectionModal(id); }
+</script>
 <!-- Edit Menu Modal -->
 <div class="modal fade" id="editMenuModal" tabindex="-1" aria-hidden="true">
 	<div class="modal-dialog">

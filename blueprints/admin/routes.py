@@ -729,13 +729,13 @@ def api_get_roles():
     try:
         # define canonical roles and permissions
         roles = ['admin', 'manager', 'waiter', 'kitchen']
-        permissions = ['manage_menu', 'manage_inventory', 'manage_users', 'view_logs', 'manage_orders', 'view_analytics']
+        permissions = ['manage_menu', 'manage_inventory', 'manage_users', 'view_logs', 'manage_orders', 'view_analytics', 'view_accounting', 'manage_accounting', 'view_collections', 'manage_collections']
         # defaults when creating missing rows
         defaults = {
             'admin': {p: True for p in permissions},
-            'manager': { 'manage_menu': True, 'manage_inventory': True, 'manage_users': False, 'view_logs': True, 'manage_orders': True, 'view_analytics': True },
-            'waiter': { 'manage_menu': False, 'manage_inventory': False, 'manage_users': False, 'view_logs': False, 'manage_orders': True, 'view_analytics': False },
-            'kitchen': { 'manage_menu': False, 'manage_inventory': False, 'manage_users': False, 'view_logs': False, 'manage_orders': True, 'view_analytics': False }
+            'manager': { 'manage_menu': True, 'manage_inventory': True, 'manage_users': False, 'view_logs': True, 'manage_orders': True, 'view_analytics': True, 'view_accounting': True, 'manage_accounting': True, 'view_collections': True, 'manage_collections': True },
+            'waiter': { 'manage_menu': False, 'manage_inventory': False, 'manage_users': False, 'view_logs': False, 'manage_orders': True, 'view_analytics': False, 'view_accounting': False, 'manage_accounting': False, 'view_collections': False, 'manage_collections': False },
+            'kitchen': { 'manage_menu': False, 'manage_inventory': False, 'manage_users': False, 'view_logs': False, 'manage_orders': True, 'view_analytics': False, 'view_accounting': False, 'manage_accounting': False, 'view_collections': False, 'manage_collections': False }
         }
 
         out = {}

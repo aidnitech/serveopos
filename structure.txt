@@ -1,0 +1,20 @@
+serveopos/
+├── app.py
+├── config.py
+├── extensions.py
+├── models.py
+├── seed.py
+├── requirements.txt
+│
+├── /templates
+├── /blueprints
+│   ├── /auth
+│   ├── /pos
+│   ├── /kds
+│   ├── /analytics
+│   └── /admin
+│
+│   (each blueprint will have __init__.py and routes.py)
+│
+├── /instance     (leave empty for now)
+└── /venv         (created by Python, don't put your own files here)

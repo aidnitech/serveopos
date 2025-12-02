@@ -1,0 +1,538 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h1 class="mb-4">Admin Dashboard</h1>
+<div class="row">
+	<div class="col-md-6">
+		<div class="card mb-4">
+			<div class="card-header">Manage Menu</div>
+			<div class="card-body">
+				<form id="menu-form">
+					<div class="mb-2">
+						<input class="form-control" name="name" placeholder="Name" required>
+					</div>
+					<div class="mb-2">
+						<input class="form-control" name="price" placeholder="Price" type="number" step="0.01" required>
+					</div>
+					<div class="mb-2">
+						<input class="form-control" name="description" placeholder="Description">
+					</div>
+					<button class="btn btn-primary" type="submit">Add Menu Item</button>
+				</form>
+
+				<hr>
+				<h6>Menu Items</h6>
+				<div id="menu-list">Loading...</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="col-md-6">
+		<div class="card mb-4">
+			<div class="card-header">Inventory</div>
+			<div class="card-body">
+				<form id="inv-form">
+					<div class="mb-2">
+						<input class="form-control" name="name" placeholder="Ingredient name" required>
+					</div>
+					<div class="mb-2">
+						<input class="form-control" name="quantity" placeholder="Quantity" type="number" value="0">
+					</div>
+					<div class="mb-2">
+						<input class="form-control" name="unit" placeholder="Unit (e.g. kg, pcs)">
+					</div>
+					<button class="btn btn-primary" type="submit">Add Inventory</button>
+				</form>
+
+				<hr>
+				<h6>Inventory Items</h6>
+				<div id="inv-list">Loading...</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+const csrfToken = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : null;
+
+async function fetchMenu(){
+	const res = await fetch('/admin/api/menu', {headers: {'X-CSRFToken': csrfToken}});
+	const items = await res.json();
+	const el = document.getElementById('menu-list');
+	if(!Array.isArray(items)) return el.innerText = 'Error loading menu';
+	if(items.length===0) return el.innerHTML = '<p>No items yet</p>';
+	el.innerHTML = '<table class="table table-sm"><thead><tr><th>Name</th><th>Price</th><th>Available</th><th></th></tr></thead><tbody>' +
+		items.map(i=>`<tr data-id="${i.id}"><td>${i.name}</td><td>${i.price.toFixed(2)}</td><td>${i.available? 'Yes':'No'}</td><td>
+			<button class="btn btn-sm btn-secondary me-1" onclick="editMenu(${i.id})">Edit</button>
+			<button class="btn btn-sm btn-info me-1" onclick="viewHistory(${i.id})">History</button>
+			<button class="btn btn-sm btn-danger" onclick="deleteMenu(${i.id})">Delete</button>
+		</td></tr>`).join('') +
+		'</tbody></table>';
+}
+
+async function fetchInv(){
+	const res = await fetch('/admin/api/inventory', {headers: {'X-CSRFToken': csrfToken}});
+	const items = await res.json();
+	const el = document.getElementById('inv-list');
+	if(!Array.isArray(items)) return el.innerText = 'Error loading inventory';
+	if(items.length===0) return el.innerHTML = '<p>No inventory items yet</p>';
+	el.innerHTML = '<table class="table table-sm"><thead><tr><th>Name</th><th>Qty</th><th>Unit</th><th></th></tr></thead><tbody>' +
+		items.map(i=>`<tr data-id="${i.id}"><td>${i.name}</td><td>${i.quantity}</td><td>${i.unit||''}</td><td>
+			<button class="btn btn-sm btn-secondary me-1" onclick="editInv(${i.id})">Edit</button>
+			<button class="btn btn-sm btn-danger" onclick="deleteInv(${i.id})">Delete</button>
+		</td></tr>`).join('') +
+		'</tbody></table>';
+}
+
+document.getElementById('menu-form').addEventListener('submit', async (e)=>{
+	e.preventDefault();
+	const fd = new FormData(e.target);
+	const body = {name: fd.get('name'), price: fd.get('price'), description: fd.get('description')};
+	const res = await fetch('/admin/api/menu', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(res.status===201){ e.target.reset(); fetchMenu(); } else { alert('Error adding menu item'); }
+});
+
+document.getElementById('inv-form').addEventListener('submit', async (e)=>{
+	e.preventDefault();
+	const fd = new FormData(e.target);
+	const body = {name: fd.get('name'), quantity: Number(fd.get('quantity')||0), unit: fd.get('unit')};
+	const res = await fetch('/admin/api/inventory', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(res.status===201){ e.target.reset(); fetchInv(); } else { alert('Error adding inventory item'); }
+});
+
+async function deleteMenu(id){
+	if(!confirm('Delete this menu item?')) return;
+	const res = await fetch('/admin/api/menu/'+id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}});
+	if(res.ok) fetchMenu(); else alert('Delete failed');
+}
+
+async function deleteInv(id){
+		if(!confirm('Delete this inventory item?')) return;
+		const res = await fetch('/admin/api/inventory/'+id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}});
+		if(res.ok) fetchInv(); else alert('Delete failed');
+}
+
+async function editMenu(id){
+		// open modal and populate
+		try{
+			const res = await fetch('/admin/api/menu/' + id, {headers: {'X-CSRFToken': csrfToken}});
+			const item = await res.json();
+			document.getElementById('edit-menu-id').value = item.id;
+			document.getElementById('edit-menu-name').value = item.name || '';
+			document.getElementById('edit-menu-price').value = item.price || '';
+			document.getElementById('edit-menu-desc').value = item.description || '';
+			document.getElementById('edit-menu-available').checked = !!item.available;
+			var modal = new bootstrap.Modal(document.getElementById('editMenuModal'));
+			modal.show();
+		}catch(e){ alert('Unable to load item: '+e.message); }
+}
+
+async function viewHistory(id){
+		const res = await fetch('/admin/api/menu/'+id+'/history', {headers:{'X-CSRFToken': csrfToken}});
+		const rows = await res.json();
+		if(!Array.isArray(rows)) return alert('Error fetching history');
+		if(rows.length===0) return alert('No price history');
+		const text = rows.map(r=> `${r.changed_at} — ${r.changed_by || 'unknown'}: ${r.old_price} -> ${r.new_price}`).join('\n');
+		alert(text);
+}
+
+async function importMenuFile(file){
+		const fd = new FormData(); fd.append('file', file);
+		const res = await fetch('/admin/api/menu/import', {method:'POST', body: fd, headers:{'X-CSRFToken': csrfToken}});
+		const json = await res.json();
+		if(res.status===201){
+			// show results
+			const el = document.getElementById('menu-import-results');
+			el.innerHTML = '<pre>' + JSON.stringify(json.results || json, null, 2) + '</pre>';
+			fetchMenu();
+		} else { alert('Import failed: '+(json.error||'unknown')); }
+}
+
+async function importInvFile(file){
+		const fd = new FormData(); fd.append('file', file);
+		const res = await fetch('/admin/api/inventory/import', {method:'POST', body: fd, headers:{'X-CSRFToken': csrfToken}});
+		const json = await res.json();
+		if(res.status===201){
+			const el = document.getElementById('inv-import-results');
+			el.innerHTML = '<pre>' + JSON.stringify(json.results || json, null, 2) + '</pre>';
+			fetchInv();
+		} else { alert('Import failed: '+(json.error||'unknown')); }
+}
+
+async function editInv(id){
+    try{
+        const res = await fetch('/admin/api/inventory/' + id, {headers: {'X-CSRFToken': csrfToken}});
+        const item = await res.json();
+        document.getElementById('edit-inv-id').value = item.id;
+        document.getElementById('edit-inv-name').value = item.name || '';
+        document.getElementById('edit-inv-quantity').value = item.quantity || 0;
+        document.getElementById('edit-inv-unit').value = item.unit || '';
+        var modal = new bootstrap.Modal(document.getElementById('editInvModal'));
+        modal.show();
+    }catch(e){ alert('Unable to load inventory item: '+e.message); }
+}
+
+async function fetchLogs(){
+		const res = await fetch('/admin/api/logs', {headers:{'X-CSRFToken': csrfToken}});
+		renderLogs(await res.json());
+}
+
+async function fetchLogsFiltered(){
+		const action = document.getElementById('log-filter-action').value;
+		const objType = document.getElementById('log-filter-object').value;
+		const user = document.getElementById('log-filter-user').value;
+		let url = '/admin/api/logs?';
+		if(action) url += 'action=' + encodeURIComponent(action) + '&';
+		if(objType) url += 'object_type=' + encodeURIComponent(objType) + '&';
+		if(user) url += 'user=' + encodeURIComponent(user) + '&';
+		const res = await fetch(url, {headers:{'X-CSRFToken': csrfToken}});
+		renderLogs(await res.json());
+}
+
+function resetLogFilters(){
+		document.getElementById('log-filter-action').value = '';
+		document.getElementById('log-filter-object').value = '';
+		document.getElementById('log-filter-user').value = '';
+		fetchLogs();
+}
+
+function renderLogs(rows){
+		const el = document.getElementById('logs-list');
+		if(!Array.isArray(rows)) return el.innerText = 'Error loading logs';
+		if(rows.length===0) return el.innerHTML = '<p>No matching logs</p>';
+		el.innerHTML = '<ul class="list-group">' + rows.map(r=> `<li class="list-group-item"><strong>${r.action}</strong> on ${r.object_type} #${r.object_id||''} by ${r.username||'system'} at ${r.created_at}<br><small>${r.details||''}</small></li>`).join('') + '</ul>';
+}
+
+function setupImportHandlers(){
+		const menuInput = document.getElementById('menu-import-file');
+		if(menuInput){ menuInput.addEventListener('change', e=>{ const f = e.target.files[0]; if(f) importMenuFile(f); }); }
+		const invInput = document.getElementById('inv-import-file');
+		if(invInput){ invInput.addEventListener('change', e=>{ const f = e.target.files[0]; if(f) importInvFile(f); }); }
+}
+
+async function initAll(){ fetchMenu(); fetchInv(); fetchLogs(); setupImportHandlers(); }
+
+initAll();
+</script>
+
+<div class="row mt-3">
+	<div class="col-md-6">
+		<div class="card">
+			<div class="card-header">Imports / Exports</div>
+			<div class="card-body">
+				<div class="mb-2">
+					<label class="form-label">Import Menu CSV</label>
+					<input id="menu-import-file" type="file" accept="text/csv" class="form-control">
+					<div id="menu-import-results" class="mt-2 small text-monospace"></div>
+					<div class="mt-2"><a class="btn btn-sm btn-outline-secondary" href="/admin/api/menu/export">Export Menu</a></div>
+				</div>
+				<hr>
+				<div class="mb-2">
+					<label class="form-label">Import Inventory CSV</label>
+					<input id="inv-import-file" type="file" accept="text/csv" class="form-control">
+					<div id="inv-import-results" class="mt-2 small text-monospace"></div>
+					<div class="mt-2"><a class="btn btn-sm btn-outline-secondary" href="/admin/api/inventory/export">Export Inventory</a></div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div class="col-md-6">
+		<div class="card">
+			<div class="card-header">Audit Logs</div>
+			<div class="card-body">
+				<div class="row g-2 mb-2">
+					<div class="col-md-4">
+						<select id="log-filter-action" class="form-select form-select-sm">
+							<option value="">All Actions</option>
+							<option value="create">Create</option>
+							<option value="update">Update</option>
+							<option value="delete">Delete</option>
+							<option value="import">Import</option>
+							<option value="forbidden">Forbidden</option>
+							<option value="reset_password">Reset Password</option>
+						</select>
+					</div>
+					<div class="col-md-4">
+						<select id="log-filter-object" class="form-select form-select-sm">
+							<option value="">All Objects</option>
+							<option value="menu_item">Menu Item</option>
+							<option value="inventory_item">Inventory Item</option>
+							<option value="user">User</option>
+							<option value="role_permissions">Role Permissions</option>
+						</select>
+					</div>
+					<div class="col-md-4">
+						<input id="log-filter-user" type="text" class="form-control form-control-sm" placeholder="Filter by username">
+					</div>
+				</div>
+				<button class="btn btn-sm btn-outline-secondary mb-2" onclick="fetchLogsFiltered()">Apply Filter</button>
+				<button class="btn btn-sm btn-outline-secondary mb-2" onclick="resetLogFilters()">Reset</button>
+				<div id="logs-list">Loading logs...</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<div class="row mt-3">
+	<div class="col-md-12">
+		<div class="card">
+			<div class="card-header">Users</div>
+			<div class="card-body">
+				<form id="user-form" class="row g-2 mb-3">
+					<div class="col-md-3"><input class="form-control" name="username" placeholder="Username" required></div>
+					<div class="col-md-3"><input class="form-control" name="password" placeholder="Password" type="password" required></div>
+					<div class="col-md-3">
+						<select name="role" class="form-select">
+							<option value="admin">Admin</option>
+							<option value="manager">Manager</option>
+							<option value="waiter">Waiter</option>
+							<option value="kitchen">Chef</option>
+						</select>
+					</div>
+					<div class="col-md-3"><button class="btn btn-primary" type="submit">Create user</button></div>
+				</form>
+
+				<div id="users-list">Loading users...</div>
+			</div>
+		</div>
+
+		<div class="row mt-3">
+			<div class="col-md-12">
+				<div class="card">
+					<div class="card-header">Role Permissions</div>
+					<div class="card-body">
+						<div id="roles-permissions">Loading roles and permissions...</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<script>
+		async function fetchRoles(){
+			const res = await fetch('/admin/api/roles', {headers:{'X-CSRFToken': csrfToken}});
+			const json = await res.json();
+			const el = document.getElementById('roles-permissions');
+			if(json.error) return el.innerText = 'Error: ' + json.error;
+			const roles = Object.keys(json.roles || {});
+			const perms = json.permissions || [];
+			
+			// Add role filter and bulk controls
+			let html = '<div class="mb-2">';
+			html += '<label class="form-label">Filter by Role:</label>';
+			html += '<select id="role-filter" class="form-select form-select-sm" style="width: auto; display: inline-block;">';
+			html += '<option value="">All Roles</option>';
+			roles.forEach(r => html += `<option value="${r}">${r}</option>`);
+			html += '</select>';
+			html += ' <button class="btn btn-sm btn-outline-secondary" onclick="fetchRoles()">Reset</button>';
+			html += '</div>';
+			
+			// Build table header
+			html += '<table class="table table-sm"><thead><tr><th>Role</th>' + perms.map(p=>`<th><small>${p}</small></th>`).join('') + '<th></th></tr></thead><tbody>';
+			
+			roles.forEach(role=>{
+				html += `<tr data-role="${role}"><td><strong>${role}</strong></td>`;
+				perms.forEach(p=>{
+					const checked = json.roles[role][p] ? 'checked' : '';
+					html += `<td><input type="checkbox" class="form-check-input" data-perm="${p}" ${checked} onchange="saveRoleOnToggle('${role}', this)"></td>`;
+				});
+				html += `<td><button class="btn btn-sm btn-primary" onclick="saveRole('${role}')">Save</button></td></tr>`;
+			});
+			html += '</tbody></table>';
+			
+			// Add bulk controls
+			html += '<div class="mt-2">';
+			html += '<button class="btn btn-sm btn-outline-info me-1" onclick="bulkToggleAll(true)">Enable All Permissions</button>';
+			html += '<button class="btn btn-sm btn-outline-warning" onclick="bulkToggleAll(false)">Disable All Permissions</button>';
+			html += '</div>';
+			
+			el.innerHTML = html;
+		}
+
+		async function saveRole(role){
+			const row = document.querySelector(`tr[data-role="${role}"]`);
+			const checks = row.querySelectorAll('input[type="checkbox"][data-perm]');
+			const permissions = {};
+			checks.forEach(c=>{ permissions[c.getAttribute('data-perm')] = c.checked; });
+			const res = await fetch('/admin/api/roles', {method:'PUT', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify({role: role, permissions: permissions})});
+			if(res.ok){ 
+				const btn = row.querySelector('button');
+				btn.innerText = 'Saved'; 
+				setTimeout(()=>btn.innerText='Save', 1000); 
+			} else { alert('Save failed'); }
+		}
+		
+		async function saveRoleOnToggle(role, checkbox){
+			// Auto-save when individual checkbox is toggled
+			const row = document.querySelector(`tr[data-role="${role}"]`);
+			const checks = row.querySelectorAll('input[type="checkbox"][data-perm]');
+			const permissions = {};
+			checks.forEach(c=>{ permissions[c.getAttribute('data-perm')] = c.checked; });
+			const res = await fetch('/admin/api/roles', {method:'PUT', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify({role: role, permissions: permissions})});
+			if(!res.ok) { alert('Failed to save permission'); checkbox.checked = !checkbox.checked; }
+		}
+		
+		function bulkToggleAll(enable){
+			const rows = document.querySelectorAll('#roles-permissions tbody tr[data-role]');
+			rows.forEach(row=>{
+				const checks = row.querySelectorAll('input[type="checkbox"][data-perm]');
+				checks.forEach(c=>{ c.checked = enable; });
+				const role = row.getAttribute('data-role');
+				saveRole(role);
+			});
+		}
+
+		fetchRoles();
+		</script>
+	</div>
+</div>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header"><h5 class="modal-title">Edit User</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+			<div class="modal-body">
+				<input type="hidden" id="edit-user-id">
+				<div class="mb-2"><label class="form-label">Username</label><input id="edit-user-username" class="form-control"></div>
+				<div class="mb-2"><label class="form-label">Role</label>
+					<select id="edit-user-role" class="form-select"><option>admin</option><option>manager</option><option>waiter</option><option>kitchen</option></select>
+				</div>
+				<div class="mb-2"><label class="form-label">Reset Password (optional)</label><input id="edit-user-password" type="password" class="form-control"></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+				<button id="save-user-btn" type="button" class="btn btn-primary">Save</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+async function fetchUsers(){
+	const res = await fetch('/admin/api/users', {headers:{'X-CSRFToken': csrfToken}});
+	const users = await res.json();
+	const el = document.getElementById('users-list');
+	if(!Array.isArray(users)) return el.innerText = 'Error loading users';
+	if(users.length===0) return el.innerHTML = '<p>No users yet</p>';
+	el.innerHTML = '<table class="table table-sm"><thead><tr><th>Username</th><th>Role</th><th></th></tr></thead><tbody>' + users.map(u=>`<tr><td>${u.username}</td><td>${u.role}</td><td><button class="btn btn-sm btn-secondary me-1" onclick="openEditUser(${u.id})">Edit</button><button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id})">Delete</button></td></tr>`).join('') + '</tbody></table>';
+}
+
+document.getElementById('user-form').addEventListener('submit', async (e)=>{
+	e.preventDefault();
+	const fd = new FormData(e.target);
+	const body = {username: fd.get('username'), password: fd.get('password'), role: fd.get('role')};
+	const res = await fetch('/admin/api/users', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	const json = await res.json();
+	if(res.status===201){ e.target.reset(); fetchUsers(); } else { alert('Create failed: '+(json.error||'unknown')); }
+});
+
+function openEditUser(id){
+	fetch('/admin/api/users', {headers:{'X-CSRFToken': csrfToken}}).then(r=>r.json()).then(users=>{
+		const u = users.find(x=>x.id===id);
+		if(!u) return alert('User not found');
+		document.getElementById('edit-user-id').value = u.id;
+		document.getElementById('edit-user-username').value = u.username;
+		document.getElementById('edit-user-role').value = u.role;
+		document.getElementById('edit-user-password').value = '';
+		new bootstrap.Modal(document.getElementById('editUserModal')).show();
+	});
+}
+
+document.getElementById('save-user-btn').addEventListener('click', async ()=>{
+	const id = document.getElementById('edit-user-id').value;
+	const body = {username: document.getElementById('edit-user-username').value, role: document.getElementById('edit-user-role').value};
+	const pw = document.getElementById('edit-user-password').value;
+	const res = await fetch('/admin/api/users/' + id, {method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(!res.ok){ alert('Update failed'); return; }
+	if(pw){
+		const r2 = await fetch('/admin/api/users/' + id + '/password', {method:'PUT', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify({password: pw})});
+		if(!r2.ok){ alert('Password reset failed'); return; }
+	}
+	bootstrap.Modal.getInstance(document.getElementById('editUserModal')).hide();
+	fetchUsers();
+});
+
+async function deleteUser(id){
+	if(!confirm('Delete user?')) return;
+	const res = await fetch('/admin/api/users/' + id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}});
+	if(res.ok) fetchUsers(); else alert('Delete failed');
+}
+
+fetchUsers();
+</script>
+<!-- Edit Menu Modal -->
+<div class="modal fade" id="editMenuModal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Edit Menu Item</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<input type="hidden" id="edit-menu-id">
+				<div class="mb-2"><label class="form-label">Name</label><input id="edit-menu-name" class="form-control"></div>
+				<div class="mb-2"><label class="form-label">Price</label><input id="edit-menu-price" class="form-control" type="number" step="0.01"></div>
+				<div class="mb-2"><label class="form-label">Description</label><textarea id="edit-menu-desc" class="form-control"></textarea></div>
+				<div class="form-check mb-2"><input id="edit-menu-available" class="form-check-input" type="checkbox"><label class="form-check-label">Available</label></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+				<button id="save-menu-btn" type="button" class="btn btn-primary">Save changes</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<!-- Edit Inventory Modal -->
+<div class="modal fade" id="editInvModal" tabindex="-1" aria-hidden="true">
+	<div class="modal-dialog">
+		<div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title">Edit Inventory Item</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body">
+				<input type="hidden" id="edit-inv-id">
+				<div class="mb-2"><label class="form-label">Name</label><input id="edit-inv-name" class="form-control"></div>
+				<div class="mb-2"><label class="form-label">Quantity</label><input id="edit-inv-quantity" class="form-control" type="number"></div>
+				<div class="mb-2"><label class="form-label">Unit</label><input id="edit-inv-unit" class="form-control"></div>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+				<button id="save-inv-btn" type="button" class="btn btn-primary">Save changes</button>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+document.getElementById('save-menu-btn').addEventListener('click', async ()=>{
+	const id = document.getElementById('edit-menu-id').value;
+	const body = {
+		name: document.getElementById('edit-menu-name').value,
+		price: Number(document.getElementById('edit-menu-price').value),
+		description: document.getElementById('edit-menu-desc').value,
+		available: document.getElementById('edit-menu-available').checked
+	};
+	const res = await fetch('/admin/api/menu/' + id, {method: 'PUT', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(res.ok){
+		bootstrap.Modal.getInstance(document.getElementById('editMenuModal')).hide();
+		fetchMenu();
+	} else { alert('Save failed'); }
+});
+
+document.getElementById('save-inv-btn').addEventListener('click', async ()=>{
+	const id = document.getElementById('edit-inv-id').value;
+	const body = {
+		name: document.getElementById('edit-inv-name').value,
+		quantity: Number(document.getElementById('edit-inv-quantity').value),
+		unit: document.getElementById('edit-inv-unit').value
+	};
+	const res = await fetch('/admin/api/inventory/' + id, {method: 'PUT', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(res.ok){
+		bootstrap.Modal.getInstance(document.getElementById('editInvModal')).hide();
+		fetchInv();
+	} else { alert('Save failed'); }
+});
+</script>
+{% endblock %}

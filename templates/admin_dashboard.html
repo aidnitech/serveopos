@@ -210,7 +210,7 @@ function setupImportHandlers(){
 		if(invInput){ invInput.addEventListener('change', e=>{ const f = e.target.files[0]; if(f) importInvFile(f); }); }
 }
 
-async function initAll(){ fetchMenu(); fetchInv(); fetchLogs(); setupImportHandlers(); }
+async function initAll(){ fetchMenu(); fetchInv(); fetchLogs(); setupImportHandlers(); fetchAccountingSummary(); fetchCollections(); }
 
 initAll();
 </script>
@@ -386,6 +386,59 @@ initAll();
 	</div>
 </div>
 
+<!-- Accounting & Collections Panels -->
+<div class="row mt-3">
+	<div class="col-md-6">
+		<div class="card">
+			<div class="card-header">Accounting</div>
+			<div class="card-body">
+				<form id="txn-form" class="row g-2 mb-2">
+					<div class="col-md-3">
+						<select id="txn-type" class="form-select">
+							<option value="income">Income</option>
+							<option value="expense">Expense</option>
+							<option value="refund">Refund</option>
+						</select>
+					</div>
+					<div class="col-md-2"><input id="txn-amount" class="form-control" placeholder="Amount" type="number" step="0.01" required></div>
+					<div class="col-md-3"><input id="txn-category" class="form-control" placeholder="Category" required></div>
+					<div class="col-md-4"><input id="txn-desc" class="form-control" placeholder="Description"></div>
+					<div class="col-md-12 mt-2"><button class="btn btn-primary btn-sm" type="submit">Record Transaction</button></div>
+				</form>
+
+				<div class="d-flex mb-2">
+					<div class="me-3"><strong>Income:</strong> <span id="acc-income">0</span></div>
+					<div class="me-3"><strong>Expenses:</strong> <span id="acc-expenses">0</span></div>
+					<div class="me-3"><strong>Net:</strong> <span id="acc-net">0</span></div>
+				</div>
+
+				<div id="txn-list">Loading transactions...</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="col-md-6">
+		<div class="card">
+			<div class="card-header">Collections</div>
+			<div class="card-body">
+				<form id="collection-form" class="row g-2 mb-2">
+					<div class="col-md-4"><input id="col-customer" class="form-control" placeholder="Customer name" required></div>
+					<div class="col-md-3"><input id="col-phone" class="form-control" placeholder="Phone"></div>
+					<div class="col-md-3"><input id="col-amount" class="form-control" placeholder="Total amount" type="number" step="0.01" required></div>
+					<div class="col-md-2"><button class="btn btn-primary btn-sm" type="submit">Create</button></div>
+				</form>
+
+				<div class="d-flex mb-2">
+					<div class="me-3"><strong>Total Outstanding:</strong> <span id="col-outstanding">0</span></div>
+					<div class="me-3"><strong>Total Collected:</strong> <span id="col-collected">0</span></div>
+				</div>
+
+				<div id="collections-list">Loading collections...</div>
+			</div>
+		</div>
+	</div>
+</div>
+
 <!-- Edit User Modal -->
 <div class="modal fade" id="editUserModal" tabindex="-1" aria-hidden="true">
 	<div class="modal-dialog">
@@ -534,5 +587,87 @@ document.getElementById('save-inv-btn').addEventListener('click', async ()=>{
 		fetchInv();
 	} else { alert('Save failed'); }
 });
+</script>
+<script>
+// Accounting & Collections JS
+async function fetchAccountingSummary(){
+	try{
+		const res = await fetch('/admin/api/accounting/summary', {headers:{'X-CSRFToken': csrfToken}});
+		if(!res.ok) return;
+		const json = await res.json();
+		document.getElementById('acc-income').innerText = (json.income||0).toFixed(2);
+		document.getElementById('acc-expenses').innerText = (json.expenses||0).toFixed(2);
+		document.getElementById('acc-net').innerText = ((json.income||0)-(json.expenses||0)).toFixed(2);
+	}catch(e){ console.warn('acct summary', e); }
+}
+
+async function fetchTransactions(){
+	try{
+		const res = await fetch('/admin/api/transactions', {headers:{'X-CSRFToken': csrfToken}});
+		const rows = await res.json();
+		const el = document.getElementById('txn-list');
+		if(!Array.isArray(rows)) return el.innerText = 'Error loading transactions';
+		if(rows.length===0) return el.innerHTML = '<p>No transactions yet</p>';
+		el.innerHTML = '<table class="table table-sm"><thead><tr><th>When</th><th>Type</th><th>Category</th><th>Amount</th><th>By</th><th></th></tr></thead><tbody>' +
+			rows.map(r=>`<tr data-id="${r.id}"><td>${r.created_at||''}</td><td>${r.transaction_type}</td><td>${r.category||''}</td><td>${(r.amount||0).toFixed(2)}</td><td>${r.recorded_by||''}</td><td><button class="btn btn-sm btn-danger" onclick="deleteTransaction(${r.id})">Del</button></td></tr>`).join('') + '</tbody></table>';
+	}catch(e){ console.warn(e); }
+}
+
+document.getElementById('txn-form').addEventListener('submit', async (e)=>{
+	e.preventDefault();
+	const body = {transaction_type: document.getElementById('txn-type').value, amount: Number(document.getElementById('txn-amount').value||0), category: document.getElementById('txn-category').value, description: document.getElementById('txn-desc').value};
+	const res = await fetch('/admin/api/transactions', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(res.status===201){ e.target.reset(); fetchTransactions(); fetchAccountingSummary(); } else { alert('Failed to record transaction'); }
+});
+
+async function deleteTransaction(id){
+	if(!confirm('Delete transaction?')) return;
+	const res = await fetch('/admin/api/transactions/' + id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}});
+	if(res.ok){ fetchTransactions(); fetchAccountingSummary(); } else alert('Delete failed');
+}
+
+// Collections
+async function fetchCollections(){
+	try{
+		const res = await fetch('/admin/api/collections', {headers:{'X-CSRFToken': csrfToken}});
+		const cols = await res.json();
+		const el = document.getElementById('collections-list');
+		if(!Array.isArray(cols)) return el.innerText = 'Error loading collections';
+		if(cols.length===0) return el.innerHTML = '<p>No collections yet</p>';
+		el.innerHTML = '<table class="table table-sm"><thead><tr><th>Customer</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th></th></tr></thead><tbody>' +
+			cols.map(c=>`<tr data-id="${c.id}"><td>${c.customer||''}</td><td>${(c.total||0).toFixed(2)}</td><td>${(c.paid||0).toFixed(2)}</td><td>${(c.balance||0).toFixed(2)}</td><td>${c.status||''}</td><td><button class="btn btn-sm btn-primary me-1" onclick="openCollection(${c.id})">Open</button><button class="btn btn-sm btn-danger" onclick="deleteCollection(${c.id})">Del</button></td></tr>`).join('') + '</tbody></table>';
+		// update summary
+		const sumRes = await fetch('/admin/api/collection/summary', {headers:{'X-CSRFToken': csrfToken}});
+		if(sumRes.ok){ const s = await sumRes.json(); document.getElementById('col-outstanding').innerText = (s.outstanding||0).toFixed(2); document.getElementById('col-collected').innerText = (s.collected||0).toFixed(2); }
+	}catch(e){ console.warn(e); }
+}
+
+document.getElementById('collection-form').addEventListener('submit', async (e)=>{
+	e.preventDefault();
+	const body = {customer: document.getElementById('col-customer').value, phone: document.getElementById('col-phone').value, total: Number(document.getElementById('col-amount').value||0)};
+	const res = await fetch('/admin/api/collections', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(res.status===201){ e.target.reset(); fetchCollections(); } else { alert('Failed to create collection'); }
+});
+
+async function openCollection(id){
+	try{
+		const res = await fetch('/admin/api/collections/' + id, {headers:{'X-CSRFToken': csrfToken}});
+		if(!res.ok) return alert('Unable to load');
+		const c = await res.json();
+		// show simple prompt to add payment and view payments
+		let msg = `Collection for ${c.customer}\nTotal: ${c.total}\nPaid: ${c.paid}\nBalance: ${c.balance}\nStatus: ${c.status}\n\nPayments:\n`;
+		(c.payments||[]).forEach(p=> msg += `${p.created_at||''} - ${p.amount} (${p.method}) by ${p.received_by||''}\n`);
+		const add = confirm(msg + '\n\nWould you like to add a payment?');
+		if(!add) return;
+		const amount = prompt('Payment amount', c.balance||0);
+		if(!amount) return;
+		const method = prompt('Payment method (cash/card/other)', 'cash');
+		const payRes = await fetch('/admin/api/collections/' + id + '/payment', {method:'POST', headers:{'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify({amount: Number(amount), method: method})});
+		if(payRes.ok){ alert('Payment recorded'); fetchCollections(); fetchAccountingSummary(); } else { alert('Payment failed'); }
+	}catch(e){ console.warn(e); }
+}
+
+async function deleteCollection(id){ if(!confirm('Delete collection?')) return; const res = await fetch('/admin/api/collections/' + id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}}); if(res.ok) fetchCollections(); else alert('Delete failed'); }
+
 </script>
 {% endblock %}

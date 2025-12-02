@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 from . import admin_bp
 from decorators import admin_required, permission_required
 from extensions import db
-from models import MenuItem, InventoryItem, PriceHistory, AuditLog, RolePermission
+from models import MenuItem, InventoryItem, PriceHistory, AuditLog, RolePermission, Transaction, Collection, Payment
 import csv, io
 from datetime import datetime
 from models import User
@@ -95,6 +95,205 @@ def api_update_user(user_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
+
+
+### Accounting & Collections
+@admin_bp.route('/api/transactions', methods=['GET'])
+@login_required
+@permission_required('view_accounting')
+def api_get_transactions():
+    try:
+        rows = Transaction.query.order_by(Transaction.id.desc()).limit(200).all()
+        return jsonify([{'id': r.id, 'transaction_type': r.transaction_type, 'amount': r.amount, 'category': r.category, 'description': r.description, 'recorded_by': r.recorded_by, 'created_at': (r.created_at.isoformat() if getattr(r,'created_at',None) else None)} for r in rows])
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/transactions', methods=['POST'])
+@login_required
+@permission_required('manage_accounting')
+def api_create_transaction():
+    data = request.get_json() or {}
+    try:
+        ttype = data.get('transaction_type') or 'income'
+        amount = float(data.get('amount', 0))
+        category = data.get('category') or 'other'
+        desc = data.get('description')
+        t = Transaction(transaction_type=ttype, amount=amount, category=category, description=desc, recorded_by=getattr(current_user,'username',None))
+        db.session.add(t)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='create', object_type='transaction', object_id=t.id, details=f'{ttype} {amount} {category or ""}')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'id': t.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/transactions/<int:txn_id>', methods=['DELETE'])
+@login_required
+@permission_required('manage_accounting')
+def api_delete_transaction(txn_id):
+    try:
+        t = Transaction.query.get_or_404(txn_id)
+        db.session.delete(t)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='delete', object_type='transaction', object_id=txn_id, details=f'deleted txn')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'status':'deleted'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/accounting/summary', methods=['GET'])
+@login_required
+@permission_required('view_accounting')
+def api_accounting_summary():
+    try:
+        income = db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0)).filter(Transaction.transaction_type=='income').scalar() or 0
+        expenses = db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0)).filter(Transaction.transaction_type=='expense').scalar() or 0
+        return jsonify({'income': float(income), 'expenses': float(expenses)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collections', methods=['GET'])
+@login_required
+@permission_required('view_collections')
+def api_get_collections():
+    try:
+        cols = Collection.query.order_by(Collection.id.desc()).all()
+        out = []
+        for c in cols:
+            out.append({'id': c.id, 'customer': c.customer_name, 'phone': c.customer_phone, 'total': c.total_amount, 'paid': c.paid_amount, 'balance': c.balance, 'status': c.status, 'due_date': c.due_date.isoformat() if c.due_date else None, 'payments': [{'id': p.id, 'amount': p.amount, 'method': p.payment_method, 'reference': p.reference_id, 'received_by': p.received_by, 'created_at': p.payment_date.isoformat() if p.payment_date else None} for p in c.payments]})
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collections', methods=['POST'])
+@login_required
+@permission_required('manage_collections')
+def api_create_collection():
+    data = request.get_json() or {}
+    try:
+        customer = data.get('customer') or data.get('customer_name') or 'Customer'
+        phone = data.get('phone') or data.get('customer_phone')
+        total = float(data.get('total', data.get('total_amount', 0)))
+        c = Collection(customer_name=customer, customer_phone=phone, total_amount=total, paid_amount=0.0, balance=total, status='pending')
+        db.session.add(c)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='create', object_type='collection', object_id=c.id, details=f'created collection for {customer} total={total}')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'id': c.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collections/<int:col_id>', methods=['GET'])
+@login_required
+@permission_required('view_collections')
+def api_get_collection(col_id):
+    try:
+        c = Collection.query.get_or_404(col_id)
+        return jsonify({'id': c.id, 'customer': c.customer_name, 'phone': c.customer_phone, 'total': c.total_amount, 'paid': c.paid_amount, 'balance': c.balance, 'status': c.status, 'payments': [{'id': p.id, 'amount': p.amount, 'method': p.payment_method, 'reference': p.reference_id, 'received_by': p.received_by, 'created_at': p.payment_date.isoformat() if p.payment_date else None} for p in c.payments]})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collections/<int:col_id>', methods=['PUT'])
+@login_required
+@permission_required('manage_collections')
+def api_update_collection(col_id):
+    data = request.get_json() or {}
+    try:
+        c = Collection.query.get_or_404(col_id)
+        changed = []
+        if 'customer' in data and data.get('customer') != c.customer:
+            changed.append(f'customer: {c.customer_name} -> {data.get("customer")}')
+            c.customer_name = data.get('customer')
+        if 'total' in data:
+            new_total = float(data.get('total'))
+            if new_total != c.total:
+                changed.append(f'total: {c.total_amount} -> {new_total}')
+                c.total_amount = new_total
+                c.balance = max(0, c.total_amount - c.paid_amount)
+        db.session.commit()
+        if changed:
+            log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='update', object_type='collection', object_id=c.id, details='; '.join(changed))
+            db.session.add(log)
+            db.session.commit()
+        return jsonify({'status':'ok'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collections/<int:col_id>', methods=['DELETE'])
+@login_required
+@permission_required('manage_collections')
+def api_delete_collection(col_id):
+    try:
+        c = Collection.query.get_or_404(col_id)
+        db.session.delete(c)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='delete', object_type='collection', object_id=col_id, details=f'deleted collection')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'status':'deleted'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collections/<int:col_id>/payment', methods=['POST'])
+@login_required
+@permission_required('manage_collections')
+def api_add_payment(col_id):
+    data = request.get_json() or {}
+    try:
+        c = Collection.query.get_or_404(col_id)
+        amount = float(data.get('amount', 0))
+        method = data.get('method') or 'cash'
+        reference = data.get('reference')
+        p = Payment(collection_id=c.id, amount=amount, payment_method=method, reference_id=reference, received_by=getattr(current_user,'username',None))
+        db.session.add(p)
+        # update collection totals
+        c.paid_amount = (c.paid_amount or 0) + amount
+        c.balance = max(0, c.total_amount - c.paid_amount)
+        if c.balance <= 0:
+            c.status = 'paid'
+        else:
+            c.status = 'partial'
+        # create corresponding transaction for accounting
+        t = Transaction(transaction_type='income', amount=amount, category='collection', description=f'payment for collection {c.id}', recorded_by=getattr(current_user,'username',None))
+        db.session.add(t)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='create', object_type='payment', object_id=p.id, details=f'payment {amount} for collection {c.id}')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'id': p.id}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/collection/summary', methods=['GET'])
+@login_required
+@permission_required('view_collections')
+def api_collection_summary():
+    try:
+        collected = db.session.query(db.func.coalesce(db.func.sum(Collection.paid_amount), 0)).scalar() or 0
+        outstanding = db.session.query(db.func.coalesce(db.func.sum(Collection.balance), 0)).scalar() or 0
+        return jsonify({'collected': float(collected), 'outstanding': float(outstanding)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 
 
 @admin_bp.route('/api/users/<int:user_id>/password', methods=['PUT'])

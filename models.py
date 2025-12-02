@@ -68,3 +68,47 @@ class RolePermission(db.Model):
         db.UniqueConstraint('role', 'permission', name='uix_role_permission'),
         {'extend_existing': True}
     )
+
+
+class Transaction(db.Model):
+    """Accounting transactions: income, expense, or refund"""
+    id = db.Column(db.Integer, primary_key=True)
+    transaction_type = db.Column(db.String(20), nullable=False)  # income, expense, refund
+    amount = db.Column(db.Float, nullable=False)
+    category = db.Column(db.String(64), nullable=False)  # food, supplies, utilities, etc
+    description = db.Column(db.Text)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    recorded_by = db.Column(db.String(64))
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class Collection(db.Model):
+    """Customer payment collection and outstanding balance tracking"""
+    id = db.Column(db.Integer, primary_key=True)
+    customer_name = db.Column(db.String(128), nullable=False)
+    customer_phone = db.Column(db.String(20))
+    total_amount = db.Column(db.Float, nullable=False)  # Total outstanding or order total
+    paid_amount = db.Column(db.Float, default=0)  # Amount already paid
+    balance = db.Column(db.Float, nullable=False)  # Remaining balance
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    status = db.Column(db.String(20), default='pending')  # pending, partial, paid, overdue
+    notes = db.Column(db.Text)
+    last_payment_date = db.Column(db.DateTime)
+    due_date = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Payment(db.Model):
+    """Individual payment records for collections"""
+    id = db.Column(db.Integer, primary_key=True)
+    collection_id = db.Column(db.Integer, db.ForeignKey('collection.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    payment_method = db.Column(db.String(20), default='cash')  # cash, card, check, online
+    reference_id = db.Column(db.String(128))  # transaction ID, check number, etc
+    received_by = db.Column(db.String(64))
+    notes = db.Column(db.Text)
+    payment_date = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    collection = db.relationship('Collection', backref='payments')

@@ -4,7 +4,7 @@ from . import admin_bp
 from decorators import admin_required, permission_required
 from extensions import db, convert_currency
 from models import MenuItem, InventoryItem, PriceHistory, AuditLog, RolePermission, Transaction, Collection, Payment
-from models import Invoice
+from models import Invoice, Restaurant, StoreSettings
 import csv, io
 from datetime import datetime
 from models import User
@@ -1061,3 +1061,287 @@ def api_update_exchange_rates():
         return jsonify({'rates': rates}), 200
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ======================== Restaurant Management ========================
+
+@admin_bp.route('/api/restaurants', methods=['GET'])
+@login_required
+def api_list_restaurants():
+    """List restaurants. Super admin sees all; restaurant admin sees their own."""
+    try:
+        if current_user.is_super_admin:
+            restaurants = Restaurant.query.all()
+        elif current_user.role == 'restaurant_admin':
+            restaurants = Restaurant.query.filter_by(owner_id=current_user.id).all()
+        else:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        return jsonify({
+            'restaurants': [{
+                'id': r.id,
+                'name': r.name,
+                'email': r.email,
+                'phone': r.phone,
+                'address': r.address,
+                'city': r.city,
+                'country': r.country,
+                'postal_code': r.postal_code,
+                'owner_id': r.owner_id,
+                'active': r.active,
+                'created_at': r.created_at.isoformat(),
+                'updated_at': r.updated_at.isoformat()
+            } for r in restaurants]
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/restaurants', methods=['POST'])
+@login_required
+def api_create_restaurant():
+    """Create a new restaurant. Only super admin."""
+    try:
+        if not current_user.is_super_admin:
+            return jsonify({'error': 'Only super admin can create restaurants'}), 403
+        
+        data = request.get_json()
+        required = ['name', 'email', 'owner_id']
+        if not all(k in data for k in required):
+            return jsonify({'error': f'Missing required fields: {required}'}), 400
+        
+        owner = User.query.get(data['owner_id'])
+        if not owner:
+            return jsonify({'error': 'Owner user not found'}), 404
+        
+        restaurant = Restaurant(
+            name=data['name'],
+            email=data['email'],
+            phone=data.get('phone'),
+            address=data.get('address'),
+            city=data.get('city'),
+            country=data.get('country'),
+            postal_code=data.get('postal_code'),
+            owner_id=data['owner_id'],
+            active=data.get('active', True)
+        )
+        db.session.add(restaurant)
+        
+        # Create default StoreSettings for the restaurant
+        store_settings = StoreSettings(
+            restaurant_id=restaurant.id,
+            timezone=data.get('timezone', 'UTC'),
+            locale=data.get('locale', 'en'),
+            currency=data.get('currency', 'USD'),
+            tax_region=data.get('tax_region', 'EU')
+        )
+        db.session.add(store_settings)
+        
+        db.session.commit()
+        
+        log = AuditLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='create',
+            object_type='restaurant',
+            object_id=restaurant.id,
+            details=f'Created restaurant: {restaurant.name}'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({
+            'id': restaurant.id,
+            'name': restaurant.name,
+            'email': restaurant.email,
+            'created_at': restaurant.created_at.isoformat()
+        }), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/restaurants/<int:restaurant_id>', methods=['GET'])
+@login_required
+def api_get_restaurant(restaurant_id):
+    """Get restaurant details. Super admin sees all; restaurant admin sees only their own."""
+    try:
+        restaurant = Restaurant.query.get(restaurant_id)
+        if not restaurant:
+            return jsonify({'error': 'Restaurant not found'}), 404
+        
+        if not current_user.is_super_admin and current_user.id != restaurant.owner_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        return jsonify({
+            'id': restaurant.id,
+            'name': restaurant.name,
+            'email': restaurant.email,
+            'phone': restaurant.phone,
+            'address': restaurant.address,
+            'city': restaurant.city,
+            'country': restaurant.country,
+            'postal_code': restaurant.postal_code,
+            'owner_id': restaurant.owner_id,
+            'active': restaurant.active,
+            'created_at': restaurant.created_at.isoformat(),
+            'updated_at': restaurant.updated_at.isoformat(),
+            'store_settings': {
+                'id': restaurant.store_settings.id,
+                'timezone': restaurant.store_settings.timezone,
+                'locale': restaurant.store_settings.locale,
+                'currency': restaurant.store_settings.currency,
+                'tax_region': restaurant.store_settings.tax_region,
+                'address_format': restaurant.store_settings.address_format,
+                'business_registration': restaurant.store_settings.business_registration,
+                'vat_number': restaurant.store_settings.vat_number,
+                'payment_terms': restaurant.store_settings.payment_terms,
+                'invoice_prefix': restaurant.store_settings.invoice_prefix
+            } if restaurant.store_settings else None
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/restaurants/<int:restaurant_id>', methods=['PUT'])
+@login_required
+def api_update_restaurant(restaurant_id):
+    """Update restaurant details. Restaurant admin updates own; super admin updates any."""
+    try:
+        restaurant = Restaurant.query.get(restaurant_id)
+        if not restaurant:
+            return jsonify({'error': 'Restaurant not found'}), 404
+        
+        if not current_user.is_super_admin and current_user.id != restaurant.owner_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        data = request.get_json()
+        
+        if 'name' in data:
+            restaurant.name = data['name']
+        if 'email' in data:
+            restaurant.email = data['email']
+        if 'phone' in data:
+            restaurant.phone = data['phone']
+        if 'address' in data:
+            restaurant.address = data['address']
+        if 'city' in data:
+            restaurant.city = data['city']
+        if 'country' in data:
+            restaurant.country = data['country']
+        if 'postal_code' in data:
+            restaurant.postal_code = data['postal_code']
+        if 'active' in data and current_user.is_super_admin:
+            restaurant.active = data['active']
+        
+        restaurant.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        log = AuditLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='update',
+            object_type='restaurant',
+            object_id=restaurant.id,
+            details=f'Updated restaurant: {restaurant.name}'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({'status': 'ok', 'id': restaurant.id}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/restaurants/<int:restaurant_id>/store-settings', methods=['GET'])
+@login_required
+def api_get_store_settings(restaurant_id):
+    """Get store settings for a restaurant."""
+    try:
+        restaurant = Restaurant.query.get(restaurant_id)
+        if not restaurant:
+            return jsonify({'error': 'Restaurant not found'}), 404
+        
+        if not current_user.is_super_admin and current_user.id != restaurant.owner_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        if not restaurant.store_settings:
+            return jsonify({'error': 'Store settings not found'}), 404
+        
+        settings = restaurant.store_settings
+        return jsonify({
+            'id': settings.id,
+            'restaurant_id': settings.restaurant_id,
+            'timezone': settings.timezone,
+            'locale': settings.locale,
+            'currency': settings.currency,
+            'tax_region': settings.tax_region,
+            'address_format': settings.address_format,
+            'business_registration': settings.business_registration,
+            'vat_number': settings.vat_number,
+            'payment_terms': settings.payment_terms,
+            'invoice_prefix': settings.invoice_prefix,
+            'created_at': settings.created_at.isoformat(),
+            'updated_at': settings.updated_at.isoformat()
+        }), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/restaurants/<int:restaurant_id>/store-settings', methods=['PUT'])
+@login_required
+def api_update_store_settings(restaurant_id):
+    """Update store settings for a restaurant."""
+    try:
+        restaurant = Restaurant.query.get(restaurant_id)
+        if not restaurant:
+            return jsonify({'error': 'Restaurant not found'}), 404
+        
+        if not current_user.is_super_admin and current_user.id != restaurant.owner_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        settings = restaurant.store_settings
+        if not settings:
+            return jsonify({'error': 'Store settings not found'}), 404
+        
+        data = request.get_json()
+        
+        if 'timezone' in data:
+            settings.timezone = data['timezone']
+        if 'locale' in data:
+            settings.locale = data['locale']
+        if 'currency' in data:
+            settings.currency = data['currency']
+        if 'tax_region' in data:
+            settings.tax_region = data['tax_region']
+        if 'address_format' in data:
+            settings.address_format = data['address_format']
+        if 'business_registration' in data:
+            settings.business_registration = data['business_registration']
+        if 'vat_number' in data:
+            settings.vat_number = data['vat_number']
+        if 'payment_terms' in data:
+            settings.payment_terms = data['payment_terms']
+        if 'invoice_prefix' in data:
+            settings.invoice_prefix = data['invoice_prefix']
+        
+        settings.updated_at = datetime.utcnow()
+        db.session.commit()
+        
+        log = AuditLog(
+            user_id=current_user.id,
+            username=current_user.username,
+            action='update',
+            object_type='store_settings',
+            object_id=settings.id,
+            details=f'Updated store settings for restaurant {restaurant.name}'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({'status': 'ok', 'id': settings.id}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+

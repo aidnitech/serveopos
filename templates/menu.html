@@ -1,23 +1,58 @@
 {% extends "base.html" %}
 {% block title %}Menu{% endblock %}
 {% block content %}
-<h1 class="mb-4">Our Menu</h1>
-<div class="row">
-  {% for item in items %}
-  <div class="col-md-4">
-    <div class="card mb-3">
-      <div class="card-body">
-        <h5 class="card-title">{{ item.name }}</h5>
-        <p class="card-text">{{ item.description }}</p>
-        <p class="card-text"><strong>{{ item.price }} RON</strong></p>
-        {% if item.available %}
-          <span class="badge bg-success">Available</span>
-        {% else %}
-          <span class="badge bg-danger">Not Available</span>
-        {% endif %}
+<div class="row mb-4">
+  <div class="col-md-12">
+    <h1>{{ _('Our Menu') }}</h1>
+    <p class="text-muted">{{ _('Browse our delicious offerings') }}</p>
+  </div>
+</div>
+
+<div id="menu-container" class="row">
+  {% if items %}
+    {% for item in items %}
+    <div class="col-md-6 col-lg-4 mb-4">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">{{ item.name }}</h5>
+          <p class="card-text text-muted small">{{ item.description or 'No description' }}</p>
+          <div class="d-flex justify-content-between align-items-center">
+            <span class="h5 mb-0">{{ "%.2f"|format(item.price) }}</span>
+            {% if item.available %}
+              <span class="badge bg-success">{{ _('Available') }}</span>
+            {% else %}
+              <span class="badge bg-danger">{{ _('Out of Stock') }}</span>
+            {% endif %}
+          </div>
+          {% if item.available %}
+            <button class="btn btn-primary btn-sm mt-3 w-100" onclick="addItemToOrder({{ item.id }}, '{{ item.name }}', {{ item.price }})">
+              {{ _('Add to Order') }}
+            </button>
+          {% else %}
+            <button class="btn btn-secondary btn-sm mt-3 w-100" disabled>
+              {{ _('Unavailable') }}
+            </button>
+          {% endif %}
+        </div>
       </div>
     </div>
-  </div>
-  {% endfor %}
+    {% endfor %}
+  {% else %}
+    <div class="col-12">
+      <div class="alert alert-info" role="alert">
+        {{ _('No menu items available yet. Check back soon!') }}
+      </div>
+    </div>
+  {% endif %}
 </div>
+
+<script>
+function addItemToOrder(itemId, itemName, price) {
+  const csrf = document.querySelector('meta[name="csrf-token"]').content;
+  // In a real scenario, this would add to a cart or session
+  alert('{{ _("Item added to order:") }} ' + itemName);
+  // Redirect to POS page with item in cart
+  window.location.href = '{{ url_for("pos.pos_home") }}';
+}
+</script>
 {% endblock %}

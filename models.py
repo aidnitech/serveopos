@@ -6,9 +6,17 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(64), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(20), default="waiter")  # admin/manager/waiter/kitchen
+    role = db.Column(db.String(20), default="waiter")  # super_admin/restaurant_admin/manager/waiter/kitchen
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=True)  # Null for super_admin
     currency = db.Column(db.String(3), default="USD")  # e.g., USD, EUR, GBP, INR, etc.
     locale = db.Column(db.String(10), nullable=True)  # e.g., en, es, pt, hi
+    is_super_admin = db.Column(db.Boolean, default=False)  # True only for platform super admin
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # 2FA fields
+    totp_secret = db.Column(db.String(32), nullable=True)  # Base32-encoded TOTP secret
+    totp_enabled = db.Column(db.Boolean, default=False)  # Is 2FA enabled?
+    backup_codes = db.Column(db.Text, nullable=True)  # JSON array of backup codes (hashed)
+    restaurant = db.relationship('Restaurant', foreign_keys=[restaurant_id], backref='staff')
 
 class MenuItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -139,3 +147,39 @@ class ExchangeRate(db.Model):
     currency = db.Column(db.String(3), nullable=False, index=True)
     rate = db.Column(db.Float, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class Restaurant(db.Model):
+    """Restaurant/merchant account managed by restaurant_admin"""
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    email = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    phone = db.Column(db.String(20))
+    address = db.Column(db.Text)
+    city = db.Column(db.String(64))
+    country = db.Column(db.String(64))
+    postal_code = db.Column(db.String(20))
+    owner_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)  # restaurant_admin user
+    owner = db.relationship('User', foreign_keys=[owner_id], backref='restaurants_owned')
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class StoreSettings(db.Model):
+    """Store-level settings: timezone, locale, currency, tax region, address formats"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False, unique=True)
+    timezone = db.Column(db.String(64), default='UTC')  # e.g., 'Europe/Dublin', 'America/New_York', 'Asia/Kolkata'
+    locale = db.Column(db.String(10), default='en')  # e.g., 'en', 'es', 'pt', 'hi'
+    currency = db.Column(db.String(3), default='USD')  # e.g., 'USD', 'EUR', 'INR', 'BRL'
+    tax_region = db.Column(db.String(64), default='EU')  # Region code for tax rules (e.g., 'EU', 'US-CA', 'IN')
+    address_format = db.Column(db.String(20), default='standard')  # address format: standard, european, asian
+    business_registration = db.Column(db.String(128))  # Business/tax registration number
+    vat_number = db.Column(db.String(64))  # VAT/GST number
+    payment_terms = db.Column(db.Integer, default=0)  # Days for payment terms (0=due on receipt)
+    invoice_prefix = db.Column(db.String(10), default='INV')  # Invoice number prefix
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='store_settings', uselist=False)
+

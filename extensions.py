@@ -2,6 +2,24 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager
 from flask_wtf.csrf import CSRFProtect
+try:
+    from flask_limiter import Limiter
+    from flask_limiter.util import get_remote_address
+    _limiter_available = True
+except Exception:
+    # Flask-Limiter not installed in this environment; provide a noop fallback
+    _limiter_available = False
+    class _NoopLimiter:
+        def init_app(self, app=None):
+            return None
+        def limit(self, *args, **kwargs):
+            def _decorator(f):
+                return f
+            return _decorator
+    Limiter = _NoopLimiter
+    def get_remote_address():
+        from flask import request
+        return request.remote_addr or 'unknown'
 import threading
 import time
 from flask import current_app
@@ -13,6 +31,7 @@ migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
 csrf = CSRFProtect()
+limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"]) if _limiter_available else Limiter()
 
 
 # Currency conversion utility

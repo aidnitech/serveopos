@@ -1,6 +1,180 @@
 {% extends "base.html" %}
 {% block title %}POS{% endblock %}
 {% block content %}
-<h1 class="mb-4">Point of Sale</h1>
-<p>This is the POS screen. Future updates will allow order taking and invoice printing.</p>
+<div class="row">
+  <div class="col-md-8">
+    <h2>{{ _('Order Items') }}</h2>
+    <div id="menu-items" class="row">
+      <p class="text-muted">Loading menu items...</p>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card">
+      <div class="card-header bg-primary text-white">
+        <h5>{{ _('Current Order') }}</h5>
+      </div>
+      <div class="card-body">
+        <table class="table table-sm" id="order-items">
+          <thead>
+            <tr>
+              <th>{{ _('Item') }}</th>
+              <th>{{ _('Qty') }}</th>
+              <th>{{ _('Price') }}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cart-items">
+            <tr id="empty-cart">
+              <td colspan="4" class="text-center text-muted">{{ _('No items added') }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <hr>
+        <div class="d-grid gap-2">
+          <div class="d-flex justify-content-between mb-2">
+            <strong>{{ _('Total:') }}</strong>
+            <strong id="order-total">0.00</strong>
+          </div>
+          <button class="btn btn-success btn-lg" id="place-order" onclick="placeOrder()">{{ _('Place Order') }}</button>
+          <button class="btn btn-warning" id="clear-order" onclick="clearCart()">{{ _('Clear') }}</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let cart = {};
+
+document.addEventListener('DOMContentLoaded', function() {
+  loadMenuItems();
+});
+
+function loadMenuItems() {
+  fetch('/api/menu-items')
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('menu-items');
+      container.innerHTML = '';
+      
+      if (!data.items || data.items.length === 0) {
+        container.innerHTML = '<p class="text-muted">No menu items available.</p>';
+        return;
+      }
+      
+      data.items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'col-md-6 col-lg-4 mb-3';
+        card.innerHTML = `
+          <div class="card h-100">
+            <div class="card-body">
+              <h6 class="card-title">${item.name}</h6>
+              <p class="card-text small">${item.description || ''}</p>
+              <p class="card-text"><strong>${parseFloat(item.price).toFixed(2)}</strong></p>
+              <button class="btn btn-sm btn-primary" onclick="addToCart(${item.id}, '${item.name}', ${item.price})">
+                {{ _('Add') }}
+              </button>
+            </div>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    })
+    .catch(err => console.error('Error loading menu items:', err));
+}
+
+function addToCart(itemId, itemName, price) {
+  if (cart[itemId]) {
+    cart[itemId].quantity += 1;
+  } else {
+    cart[itemId] = { name: itemName, price: price, quantity: 1 };
+  }
+  updateCart();
+}
+
+function removeFromCart(itemId) {
+  delete cart[itemId];
+  updateCart();
+}
+
+function updateQuantity(itemId, newQty) {
+  const qty = parseInt(newQty);
+  if (qty > 0) {
+    cart[itemId].quantity = qty;
+  } else {
+    removeFromCart(itemId);
+  }
+  updateCart();
+}
+
+function updateCart() {
+  const cartItems = document.getElementById('cart-items');
+  const emptyCart = document.getElementById('empty-cart');
+  
+  if (Object.keys(cart).length === 0) {
+    cartItems.innerHTML = '<tr id="empty-cart"><td colspan="4" class="text-center text-muted">{{ _('No items added') }}</td></tr>';
+    document.getElementById('order-total').textContent = '0.00';
+    return;
+  }
+  
+  emptyCart?.remove();
+  cartItems.innerHTML = '';
+  let total = 0;
+  
+  Object.entries(cart).forEach(([itemId, item]) => {
+    const subtotal = item.price * item.quantity;
+    total += subtotal;
+    
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td>${item.name}</td>
+      <td><input type="number" class="form-control form-control-sm" value="${item.quantity}" min="1" onchange="updateQuantity(${itemId}, this.value)"></td>
+      <td>${subtotal.toFixed(2)}</td>
+      <td><button class="btn btn-xs btn-danger" onclick="removeFromCart(${itemId})">✕</button></td>
+    `;
+    cartItems.appendChild(row);
+  });
+  
+  document.getElementById('order-total').textContent = total.toFixed(2);
+}
+
+function clearCart() {
+  cart = {};
+  updateCart();
+}
+
+function placeOrder() {
+  if (Object.keys(cart).length === 0) {
+    alert('{{ _("Please add items to the order") }}');
+    return;
+  }
+  
+  const items = Object.entries(cart).map(([itemId, item]) => ({
+    menu_item_id: parseInt(itemId),
+    quantity: item.quantity
+  }));
+  
+  fetch('/pos/orders', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content
+    },
+    body: JSON.stringify({ items: items })
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.id) {
+      alert('{{ _("Order placed successfully! ID:") }} ' + data.id);
+      clearCart();
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  })
+  .catch(err => {
+    console.error('Error placing order:', err);
+    alert('{{ _("Error placing order") }}');
+  });
+}
+</script>
 {% endblock %}

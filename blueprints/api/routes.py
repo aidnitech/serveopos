@@ -12,3 +12,23 @@ def menu_json():
         ])
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@api_bp.route("/menu-items")
+def get_menu_items():
+    """Fetch available menu items for POS"""
+    try:
+        items = MenuItem.query.filter_by(available=True).all()
+        return jsonify({
+            "items": [
+                {
+                    "id": item.id,
+                    "name": item.name,
+                    "description": item.description,
+                    "price": item.price,
+                    "available": item.available
+                }
+                for item in items
+            ]
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

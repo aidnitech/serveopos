@@ -1,5 +1,5 @@
 from flask import Flask, render_template
-from extensions import db, migrate, login_manager, csrf
+from extensions import db, migrate, login_manager, csrf, limiter
 from config import Config
 from blueprints import register_blueprints
 
@@ -12,6 +12,7 @@ def create_app():
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+    limiter.init_app(app)
     # Ensure templates can call `csrf_token()` even if Flask-WTF doesn't auto-register it
     try:
         from flask_wtf.csrf import generate_csrf

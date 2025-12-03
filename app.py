@@ -16,6 +16,18 @@ def create_app():
     # Register blueprints
     register_blueprints(app)
 
+    # Start exchange rate updater if enabled
+    try:
+        if app.config.get('ENABLE_EXCHANGE_UPDATER', True):
+            from extensions import schedule_exchange_rate_updater, update_exchange_rates
+            # perform a first-time immediate update
+            with app.app_context():
+                update_exchange_rates(app)
+            # schedule background updates
+            schedule_exchange_rate_updater(app, interval_seconds=app.config.get('EXCHANGE_UPDATE_INTERVAL', 60*60*6))
+    except Exception:
+        pass
+
     # Root route
     @app.route("/")
     def index():

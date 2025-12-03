@@ -130,3 +130,11 @@ class Invoice(db.Model):
     paid_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ExchangeRate(db.Model):
+    """Store exchange rates per currency with last updated timestamp"""
+    id = db.Column(db.Integer, primary_key=True)
+    currency = db.Column(db.String(3), nullable=False, index=True)
+    rate = db.Column(db.Float, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -9,6 +9,7 @@ import csv, io
 from datetime import datetime
 from models import User
 from werkzeug.security import generate_password_hash
+from flask import current_app
 
 
 @admin_bp.route("/")
@@ -1006,4 +1007,29 @@ def set_user_currency(user_id):
         return jsonify({'status': 'ok', 'message': f'Currency updated to {new_currency}', 'currency': new_currency})
     except Exception as e:
         db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/exchange-rates', methods=['GET'])
+@login_required
+@permission_required('view_accounting')
+def api_get_exchange_rates():
+    try:
+        rates = current_app.config.get('EXCHANGE_RATES', {})
+        last = current_app.config.get('EXCHANGE_RATES_LAST_UPDATED')
+        return jsonify({'rates': rates, 'last_updated': last})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/exchange-rates/update', methods=['POST'])
+@login_required
+@permission_required('manage_accounting')
+def api_update_exchange_rates():
+    try:
+        # Trigger immediate update
+        from extensions import update_exchange_rates
+        rates = update_exchange_rates(current_app)
+        return jsonify({'rates': rates}), 200
+    except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -4,6 +4,7 @@ from . import admin_bp
 from decorators import admin_required, permission_required
 from extensions import db
 from models import MenuItem, InventoryItem, PriceHistory, AuditLog, RolePermission, Transaction, Collection, Payment
+from models import Invoice
 import csv, io
 from datetime import datetime
 from models import User
@@ -291,6 +292,175 @@ def api_collection_summary():
         collected = db.session.query(db.func.coalesce(db.func.sum(Collection.paid_amount), 0)).scalar() or 0
         outstanding = db.session.query(db.func.coalesce(db.func.sum(Collection.balance), 0)).scalar() or 0
         return jsonify({'collected': float(collected), 'outstanding': float(outstanding)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+### Invoicing
+@admin_bp.route('/api/invoices', methods=['GET'])
+@login_required
+@permission_required('view_accounting')
+def api_get_invoices():
+    try:
+        invs = Invoice.query.order_by(Invoice.id.desc()).all()
+        out = []
+        for i in invs:
+            out.append({'id': i.id, 'invoice_number': i.invoice_number, 'customer': i.customer_name, 'total': i.total, 'status': i.status, 'issued_at': i.issued_at.isoformat() if i.issued_at else None})
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/invoices', methods=['POST'])
+@login_required
+@permission_required('manage_accounting')
+def api_create_invoice():
+    data = request.get_json() or {}
+    try:
+        # Allow creating from collection or order
+        collection_id = data.get('collection_id')
+        order_id = data.get('order_id')
+        customer = data.get('customer')
+        phone = data.get('phone')
+        items = data.get('items') or ''
+        total = float(data.get('total', 0))
+        # generate invoice number - more unique (include milliseconds)
+        import time
+        ms = int((time.time() % 1) * 10000)
+        num = f"INV-{int(datetime.utcnow().timestamp())}-{ms}"
+        inv = Invoice(invoice_number=num, order_id=order_id, collection_id=collection_id, customer_name=customer, customer_phone=phone, items=items, total=total, status='issued', issued_at=datetime.utcnow())
+        db.session.add(inv)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='create', object_type='invoice', object_id=inv.id, details=f'created invoice {inv.invoice_number}')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'id': inv.id, 'invoice_number': inv.invoice_number}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/invoices/<int:inv_id>', methods=['GET'])
+@login_required
+@permission_required('view_accounting')
+def api_get_invoice(inv_id):
+    try:
+        i = Invoice.query.get_or_404(inv_id)
+        return jsonify({'id': i.id, 'invoice_number': i.invoice_number, 'customer': i.customer_name, 'phone': i.customer_phone, 'items': i.items, 'total': i.total, 'status': i.status, 'issued_at': i.issued_at.isoformat() if i.issued_at else None})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/invoices/<int:inv_id>/mark-paid', methods=['PUT'])
+@login_required
+@permission_required('manage_accounting')
+def api_mark_invoice_paid(inv_id):
+    try:
+        i = Invoice.query.get_or_404(inv_id)
+        i.status = 'paid'
+        i.paid_at = datetime.utcnow()
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='update', object_type='invoice', object_id=i.id, details=f'marked invoice {i.invoice_number} as paid')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'status':'paid'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/invoices/<int:inv_id>', methods=['DELETE'])
+@login_required
+@permission_required('manage_accounting')
+def api_delete_invoice(inv_id):
+    try:
+        i = Invoice.query.get_or_404(inv_id)
+        num = i.invoice_number
+        db.session.delete(i)
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user,'id',None), username=getattr(current_user,'username',None), action='delete', object_type='invoice', object_id=inv_id, details=f'deleted invoice {num}')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'status':'deleted'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/invoices/<int:inv_id>/print', methods=['GET'])
+@login_required
+@permission_required('view_accounting')
+def print_invoice(inv_id):
+    try:
+        i = Invoice.query.get_or_404(inv_id)
+        html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Invoice {i.invoice_number}</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 20px; }}
+    .header {{ text-align: center; margin-bottom: 30px; }}
+    .logo {{ font-size: 24px; font-weight: bold; color: #d32f2f; }}
+    .invoice-number {{ font-size: 14px; margin-top: 10px; }}
+    .details {{ margin: 20px 0; }}
+    .details-row {{ display: flex; justify-content: space-between; margin: 8px 0; }}
+    .label {{ font-weight: bold; }}
+    table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+    th, td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
+    th {{ background-color: #f5f5f5; font-weight: bold; }}
+    .total-row {{ font-weight: bold; font-size: 16px; background-color: #f5f5f5; }}
+    .footer {{ text-align: center; margin-top: 30px; font-size: 12px; color: #666; }}
+    .status {{ display: inline-block; padding: 5px 10px; border-radius: 3px; font-weight: bold; }}
+    .status-paid {{ background-color: #4caf50; color: white; }}
+    .status-issued {{ background-color: #ff9800; color: white; }}
+    .status-draft {{ background-color: #ccc; color: #333; }}
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">ServeoPOS</div>
+    <div class="invoice-number">Invoice: {i.invoice_number}</div>
+    <div class="status status-{i.status}">{i.status.upper()}</div>
+  </div>
+
+  <div class="details">
+    <div class="details-row">
+      <div><span class="label">Customer:</span> {i.customer_name or 'N/A'}</div>
+      <div><span class="label">Phone:</span> {i.customer_phone or 'N/A'}</div>
+    </div>
+    <div class="details-row">
+      <div><span class="label">Issued:</span> {i.issued_at.strftime('%Y-%m-%d %H:%M') if i.issued_at else 'N/A'}</div>
+      <div><span class="label">Paid:</span> {i.paid_at.strftime('%Y-%m-%d %H:%M') if i.paid_at else 'Pending'}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Description</th>
+        <th>Amount</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{i.items or 'Services'}</td>
+        <td>{i.total:.2f}</td>
+      </tr>
+      <tr class="total-row">
+        <td>TOTAL</td>
+        <td>{i.total:.2f}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <p>Thank you for your business!</p>
+    <p>Generated on {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}</p>
+  </div>
+</body>
+</html>"""
+        return html, 200, {'Content-Type': 'text/html; charset=utf-8'}
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

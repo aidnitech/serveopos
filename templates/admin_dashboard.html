@@ -513,6 +513,61 @@ async function deleteUser(id){
 
 fetchUsers();
 </script>
+
+<!-- Invoices Panel -->
+<div class="row mt-3">
+	<div class="col-md-12">
+		<div class="card">
+			<div class="card-header">Invoices</div>
+			<div class="card-body">
+				<div class="row g-2 mb-2">
+					<div class="col-md-4"><select id="invoice-from-collection" class="form-select"><option value="">Create from collection...</option></select></div>
+					<div class="col-md-2"><button id="create-invoice-btn" class="btn btn-sm btn-primary">Create Invoice</button></div>
+				</div>
+				<div id="invoices-list">Loading invoices...</div>
+			</div>
+		</div>
+	</div>
+</div>
+
+<script>
+async function fetchInvoices(){
+	try{
+		const res = await fetch('/admin/api/invoices', {headers:{'X-CSRFToken': csrfToken}});
+		const invs = await res.json();
+		const el = document.getElementById('invoices-list');
+		if(!Array.isArray(invs)) return el.innerText = 'Error loading invoices';
+		if(invs.length===0) return el.innerHTML = '<p>No invoices yet</p>';
+		el.innerHTML = '<table class="table table-sm"><thead><tr><th>#</th><th>Invoice</th><th>Customer</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>' + invs.map(i=>`<tr><td>${i.id}</td><td>${i.invoice_number}</td><td>${i.customer||''}</td><td>${(i.total||0).toFixed(2)}</td><td>${i.status||''}</td><td><button class="btn btn-sm btn-outline-primary" onclick="viewInvoice(${i.id})">View</button></td></tr>`).join('') + '</tbody></table>';
+	}catch(e){ console.warn(e); }
+}
+
+async function loadCollectionsForInvoice(){
+	try{
+		const res = await fetch('/admin/api/collections', {headers:{'X-CSRFToken': csrfToken}});
+		const cols = await res.json();
+		const sel = document.getElementById('invoice-from-collection');
+		sel.innerHTML = '<option value="">Create from collection...</option>' + (Array.isArray(cols)? cols.map(c=>`<option value="${c.id}" data-total="${c.total}">${c.id} - ${c.customer||c.customer_name||'Customer'} - ${ (c.total||0).toFixed(2) }</option>`).join('') : '');
+	}catch(e){ console.warn(e); }
+}
+
+document.getElementById('create-invoice-btn').addEventListener('click', async ()=>{
+	const sel = document.getElementById('invoice-from-collection');
+	const colId = sel.value;
+	if(!colId) return alert('Select a collection to create an invoice from');
+	// fetch collection
+	const res = await fetch('/admin/api/collections/' + colId, {headers:{'X-CSRFToken': csrfToken}});
+	if(!res.ok) return alert('Failed to load collection');
+	const c = await res.json();
+	const body = {collection_id: c.id, customer: c.customer||c.customer_name, phone: c.phone||c.customer_phone, items: JSON.stringify([]), total: c.total||c.total_amount};
+	const r2 = await fetch('/admin/api/invoices', {method:'POST', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+	if(r2.status===201){ alert('Invoice created'); fetchInvoices(); } else { alert('Failed to create invoice'); }
+});
+
+function viewInvoice(id){ window.open('/admin/api/invoices/' + id, '_blank'); }
+
+fetchInvoices(); loadCollectionsForInvoice();
+</script>
 <!-- Collection Detail / Payment Modal -->
 <div class="modal fade" id="collectionDetailModal" tabindex="-1" aria-hidden="true">
 	<div class="modal-dialog modal-lg">
@@ -736,5 +791,102 @@ async function openCollection(id){
 
 async function deleteCollection(id){ if(!confirm('Delete collection?')) return; const res = await fetch('/admin/api/collections/' + id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}}); if(res.ok) fetchCollections(); else alert('Delete failed'); }
 
+</script>
+
+<!-- Invoices Panel (Enhanced) -->
+<div class="row mt-3">
+  <div class="col-md-12">
+    <div class="card">
+      <div class="card-header">Invoices</div>
+      <div class="card-body">
+        <div class="row g-2 mb-2">
+          <div class="col-md-3"><select id="invoice-from-collection" class="form-select form-select-sm"><option value="">Create from collection...</option></select></div>
+          <div class="col-md-2"><button id="create-invoice-btn" class="btn btn-sm btn-primary">Create Invoice</button></div>
+          <div class="col-md-2"><input id="invoice-search" class="form-control form-control-sm" placeholder="Search..."></div>
+          <div class="col-md-2">
+            <select id="invoice-filter-status" class="form-select form-select-sm">
+              <option value="">All Status</option>
+              <option value="draft">Draft</option>
+              <option value="issued">Issued</option>
+              <option value="paid">Paid</option>
+            </select>
+          </div>
+          <div class="col-md-2"><button class="btn btn-sm btn-outline-secondary" onclick="filterInvoices()">Filter</button></div>
+        </div>
+        <div id="invoices-list">Loading invoices...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let allInvoices = [];
+
+async function fetchInvoices(){
+  try{
+    const res = await fetch('/admin/api/invoices', {headers:{'X-CSRFToken': csrfToken}});
+    allInvoices = await res.json() || [];
+    renderInvoices(allInvoices);
+  }catch(e){ console.warn(e); document.getElementById('invoices-list').innerText = 'Error loading'; }
+}
+
+function renderInvoices(invs){
+  const el = document.getElementById('invoices-list');
+  if(!Array.isArray(invs) || invs.length===0) return el.innerHTML = '<p>No invoices yet</p>';
+  el.innerHTML = '<table class="table table-sm"><thead><tr><th>#</th><th>Invoice</th><th>Customer</th><th>Total</th><th>Status</th><th></th></tr></thead><tbody>' + invs.map(i=>{
+    const badge = i.status==='paid' ? '<span class="badge bg-success">Paid</span>' : i.status==='issued' ? '<span class="badge bg-warning">Issued</span>' : '<span class="badge bg-secondary">Draft</span>';
+    return `<tr><td>${i.id}</td><td>${i.invoice_number}</td><td>${i.customer||''}</td><td>${(i.total||0).toFixed(2)}</td><td>${badge}</td><td>
+      <button class="btn btn-xs btn-outline-primary me-1" onclick="printInvoice(${i.id})" title="Print">🖨️</button>
+      ${i.status!=='paid' ? `<button class="btn btn-xs btn-outline-success me-1" onclick="markInvoicePaid(${i.id})" title="Mark Paid">✓</button>` : ''}
+      <button class="btn btn-xs btn-outline-danger" onclick="deleteInvoice(${i.id})" title="Delete">✕</button>
+    </td></tr>`;
+  }).join('') + '</tbody></table>';
+}
+
+function filterInvoices(){
+  const search = (document.getElementById('invoice-search').value||'').toLowerCase();
+  const status = document.getElementById('invoice-filter-status').value;
+  const filtered = allInvoices.filter(i=> (search==='' || i.invoice_number.toLowerCase().includes(search) || (i.customer||'').toLowerCase().includes(search)) && (status==='' || i.status===status));
+  renderInvoices(filtered);
+}
+
+document.getElementById('invoice-search').addEventListener('keyup', filterInvoices);
+
+function printInvoice(id){ window.open('/invoices/' + id + '/print', '_blank'); }
+
+async function markInvoicePaid(id){
+  if(!confirm('Mark invoice as paid?')) return;
+  const res = await fetch('/admin/api/invoices/' + id + '/mark-paid', {method:'PUT', headers:{'X-CSRFToken': csrfToken}});
+  if(res.ok){ alert('Invoice marked as paid'); fetchInvoices(); } else { alert('Failed'); }
+}
+
+async function deleteInvoice(id){
+  if(!confirm('Delete invoice?')) return;
+  const res = await fetch('/admin/api/invoices/' + id, {method:'DELETE', headers:{'X-CSRFToken': csrfToken}});
+  if(res.ok){ alert('Invoice deleted'); fetchInvoices(); } else { alert('Failed'); }
+}
+
+async function loadCollectionsForInvoice(){
+  try{
+    const res = await fetch('/admin/api/collections', {headers:{'X-CSRFToken': csrfToken}});
+    const cols = await res.json();
+    const sel = document.getElementById('invoice-from-collection');
+    sel.innerHTML = '<option value="">Create from collection...</option>' + (Array.isArray(cols)? cols.map(c=>`<option value="${c.id}" data-total="${c.total}">${c.id} - ${c.customer||c.customer_name||'Customer'} - ${(c.total||0).toFixed(2)}</option>`).join('') : '');
+  }catch(e){ console.warn(e); }
+}
+
+document.getElementById('create-invoice-btn').addEventListener('click', async ()=>{
+  const sel = document.getElementById('invoice-from-collection');
+  const colId = sel.value;
+  if(!colId) return alert('Select a collection to create an invoice from');
+  const res = await fetch('/admin/api/collections/' + colId, {headers:{'X-CSRFToken': csrfToken}});
+  if(!res.ok) return alert('Failed to load collection');
+  const c = await res.json();
+  const body = {collection_id: c.id, customer: c.customer||c.customer_name, phone: c.phone||c.customer_phone, items: JSON.stringify([]), total: c.total||c.total_amount};
+  const r2 = await fetch('/admin/api/invoices', {method:'POST', headers: {'Content-Type':'application/json','X-CSRFToken': csrfToken}, body: JSON.stringify(body)});
+  if(r2.status===201){ alert('Invoice created'); fetchInvoices(); sel.value=''; } else { alert('Failed to create invoice'); }
+});
+
+fetchInvoices(); loadCollectionsForInvoice();
 </script>
 {% endblock %}

@@ -112,3 +112,20 @@ class Payment(db.Model):
     payment_date = db.Column(db.DateTime, default=datetime.utcnow)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     collection = db.relationship('Collection', backref='payments')
+
+
+class Invoice(db.Model):
+    """Simple invoice model linking to orders or collections"""
+    id = db.Column(db.Integer, primary_key=True)
+    invoice_number = db.Column(db.String(64), unique=True, index=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    collection_id = db.Column(db.Integer, db.ForeignKey('collection.id'), nullable=True)
+    customer_name = db.Column(db.String(128))
+    customer_phone = db.Column(db.String(20))
+    items = db.Column(db.Text)  # JSON-serialized items or plain text
+    total = db.Column(db.Float, nullable=False, default=0.0)
+    status = db.Column(db.String(20), default='draft')  # draft, issued, paid
+    issued_at = db.Column(db.DateTime)
+    paid_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

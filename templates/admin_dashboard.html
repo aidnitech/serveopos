@@ -2,6 +2,32 @@
 {% block title %}Admin Dashboard{% endblock %}
 {% block content %}
 <h1 class="mb-4">Admin Dashboard</h1>
+
+<!-- Currency Settings Card -->
+<div class="row mb-4">
+	<div class="col-md-3">
+		<div class="card">
+			<div class="card-header">User Settings</div>
+			<div class="card-body">
+				<label for="currency-selector" class="form-label">Preferred Currency</label>
+				<select class="form-select" id="currency-selector">
+					<option value="USD">USD - US Dollar</option>
+					<option value="EUR">EUR - Euro</option>
+					<option value="GBP">GBP - British Pound</option>
+					<option value="INR">INR - Indian Rupee</option>
+					<option value="RON">RON - Romanian Leu</option>
+					<option value="CAD">CAD - Canadian Dollar</option>
+					<option value="AUD">AUD - Australian Dollar</option>
+					<option value="JPY">JPY - Japanese Yen</option>
+					<option value="CNY">CNY - Chinese Yuan</option>
+					<option value="AED">AED - UAE Dirham</option>
+				</select>
+				<small class="form-text text-muted mt-2 d-block">All monetary values will display in your selected currency</small>
+			</div>
+		</div>
+	</div>
+</div>
+
 <div class="row">
 	<div class="col-md-6">
 		<div class="card mb-4">
@@ -54,6 +80,47 @@
 
 <script>
 const csrfToken = document.querySelector('meta[name="csrf-token"]') ? document.querySelector('meta[name="csrf-token"]').getAttribute('content') : null;
+
+// Initialize currency selector with current user's currency
+async function initializeCurrencySelector(){
+	try{
+		const currencySelector = document.getElementById('currency-selector');
+		// Get current user ID and currency from page or fetch
+		const userIdMeta = document.querySelector('meta[name="user-id"]');
+		const currentCurrencyMeta = document.querySelector('meta[name="user-currency"]');
+		
+		if(currentCurrencyMeta){
+			currencySelector.value = currentCurrencyMeta.getAttribute('content');
+		}
+		
+		// Add change event listener
+		currencySelector.addEventListener('change', async (e) => {
+			const newCurrency = e.target.value;
+			if(!userIdMeta) return alert('Unable to determine user ID');
+			
+			const userId = userIdMeta.getAttribute('content');
+			const res = await fetch('/admin/api/users/' + userId + '/currency', {
+				method: 'PUT',
+				headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+				body: JSON.stringify({currency: newCurrency})
+			});
+			
+			if(res.ok){
+				const data = await res.json();
+				alert('Currency changed to ' + newCurrency);
+				// Refresh page to show amounts in new currency
+				location.reload();
+			} else {
+				const err = await res.json();
+				alert('Failed to change currency: ' + (err.error || 'Unknown error'));
+				// Reset selector to previous value
+				location.reload();
+			}
+		});
+	} catch(e){
+		console.warn('Currency selector initialization failed:', e);
+	}
+}
 
 async function fetchMenu(){
 	const res = await fetch('/admin/api/menu', {headers: {'X-CSRFToken': csrfToken}});
@@ -888,5 +955,8 @@ document.getElementById('create-invoice-btn').addEventListener('click', async ()
 });
 
 fetchInvoices(); loadCollectionsForInvoice();
+
+// Initialize currency selector
+initializeCurrencySelector();
 </script>
 {% endblock %}

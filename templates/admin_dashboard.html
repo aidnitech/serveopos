@@ -23,6 +23,17 @@
 					<option value="AED">AED - UAE Dirham</option>
 				</select>
 				<small class="form-text text-muted mt-2 d-block">{{ _('All monetary values will display in your selected currency') }}</small>
+				<hr>
+				<label for="locale-selector" class="form-label mt-2">{{ _('Preferred Language') }}</label>
+				<select class="form-select" id="locale-selector">
+					<option value="">{{ _('Detect from browser') }}</option>
+					<option value="en">English</option>
+					<option value="es">Español</option>
+					<option value="pt">Português</option>
+					<option value="hi">हिन्दी</option>
+					<option value="ro">Română</option>
+				</select>
+				<small class="form-text text-muted mt-2 d-block">{{ _('Choose your UI language') }}</small>
 			</div>
 		</div>
 	</div>
@@ -92,6 +103,11 @@ async function initializeCurrencySelector(){
 		if(currentCurrencyMeta){
 			currencySelector.value = currentCurrencyMeta.getAttribute('content');
 		}
+		const localeSelector = document.getElementById('locale-selector');
+		const currentLocaleMeta = document.querySelector('meta[name="user-locale"]');
+		if(currentLocaleMeta && localeSelector){
+			if(currentLocaleMeta.getAttribute('content')) localeSelector.value = currentLocaleMeta.getAttribute('content');
+		}
 		
 		// Add change event listener
 		currencySelector.addEventListener('change', async (e) => {
@@ -117,6 +133,27 @@ async function initializeCurrencySelector(){
 				location.reload();
 			}
 		});
+
+		if(localeSelector){
+			localeSelector.addEventListener('change', async (e) => {
+				const newLocale = e.target.value;
+				if(!userIdMeta) return alert('Unable to determine user ID');
+				const userId = userIdMeta.getAttribute('content');
+				const res = await fetch('/admin/api/users/' + userId + '/locale', {
+					method: 'PUT',
+					headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+					body: JSON.stringify({locale: newLocale})
+				});
+				if(res.ok){
+					alert('Language changed');
+					location.reload();
+				} else {
+					const err = await res.json();
+					alert('Failed to change language: ' + (err.error || 'Unknown'));
+					location.reload();
+				}
+			});
+		}
 	} catch(e){
 		console.warn('Currency selector initialization failed:', e);
 	}

@@ -1,6 +1,7 @@
 from flask import request, jsonify, current_app
 from . import payments_bp
-from decorators import permission_required, admin_required, login_required
+from decorators import permission_required, admin_required
+from flask_login import login_required
 
 # Payment endpoints are intentionally provider-agnostic. Concrete provider integrations
 # should implement the PaymentProvider interface in services/payment_providers.py

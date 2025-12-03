@@ -3,12 +3,51 @@ from app import create_app
 from extensions import db, convert_currency
 from models import User, MenuItem, Invoice, Collection, Payment, Transaction
 from datetime import datetime
+from werkzeug.security import generate_password_hash
 
 class TestCurrencyConversion(unittest.TestCase):
     def setUp(self):
         self.app = create_app()
         self.app.config['TESTING'] = True
+        # Disable CSRF in tests to simplify form submissions
+        self.app.config['WTF_CSRF_ENABLED'] = False
+        # Use an in-memory database for isolation
+        self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        # Use deterministic exchange rates for tests
+        self.app.config['EXCHANGE_RATES'] = {
+            'USD': 1.0,
+            'EUR': 0.92,
+            'GBP': 0.79,
+            'INR': 83.12,
+            'RON': 4.5,
+            'CAD': 1.35,
+            'AUD': 1.45,
+            'JPY': 110.0,
+            'CNY': 7.0,
+            'AED': 3.67
+        }
+        self.client = self.app.test_client()
+
+        with self.app.app_context():
+            db.create_all()
+            # ensure no leftover test users exist (avoid unique constraint failures)
+            for uname in ('user_usd', 'user_eur'):
+                existing = User.query.filter_by(username=uname).first()
+                if existing:
+                    db.session.delete(existing)
+            db.session.commit()
+            # create some default users used by the tests
+            user_usd = User(username='user_usd', password_hash=generate_password_hash('pass'), role='admin', currency='USD')
+            user_eur = User(username='user_eur', password_hash=generate_password_hash('pass'), role='admin', currency='EUR')
+            db.session.add_all([user_usd, user_eur])
+            db.session.commit()
+
         self.rates = self.app.config.get('EXCHANGE_RATES', {})
+
+    def tearDown(self):
+        with self.app.app_context():
+            db.session.remove()
+            db.drop_all()
     
     def test_convert_currency_usd_to_eur(self):
         """Test converting USD to EUR"""
@@ -27,7 +66,7 @@ class TestCurrencyConversion(unittest.TestCase):
     def test_convert_currency_usd_to_inr(self):
         """Test converting USD to INR"""
         amount = 1.0
-        converted = convert_currency(amount, 'USD', 'INR', rates)
+        converted = convert_currency(amount, 'USD', 'INR', self.rates)
         # 1 USD * 83.12 = 83.12 INR
         self.assertAlmostEqual(converted, 83.12, places=2)
     
@@ -107,22 +146,49 @@ class TestCurrencyInvoices(unittest.TestCase):
     def setUp(self):
         self.app = create_app()
         self.app.config['TESTING'] = True
+        # Disable CSRF for test client
+        self.app.config['WTF_CSRF_ENABLED'] = False
         self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        # Use deterministic exchange rates for tests
+        self.app.config['EXCHANGE_RATES'] = {
+            'USD': 1.0,
+            'EUR': 0.92,
+            'GBP': 0.79,
+            'INR': 83.12,
+            'RON': 4.5,
+            'CAD': 1.35,
+            'AUD': 1.45,
+            'JPY': 110.0,
+            'CNY': 7.0,
+            'AED': 3.67
+        }
         self.client = self.app.test_client()
         
         with self.app.app_context():
             db.create_all()
             
             # Create test users
-            self.user_usd = User(username='user_usd', password_hash='pass', role='admin', currency='USD')
-            self.user_eur = User(username='user_eur', password_hash='pass', role='admin', currency='EUR')
+            # Avoid duplicate users from previous runs
+            for uname in ('user_usd','user_eur'):
+                ex = User.query.filter_by(username=uname).first()
+                if ex:
+                    db.session.delete(ex)
+            self.user_usd = User(username='user_usd', password_hash=generate_password_hash('pass'), role='admin', currency='USD')
+            self.user_eur = User(username='user_eur', password_hash=generate_password_hash('pass'), role='admin', currency='EUR')
             
             # Create test invoices
+            # remove any existing invoices with the same numbers
+            for num in ('INV-001','INV-002'):
+                exi = Invoice.query.filter_by(invoice_number=num).first()
+                if exi:
+                    db.session.delete(exi)
             inv1 = Invoice(invoice_number='INV-001', customer_name='Customer 1', total=100.0, status='issued', issued_at=datetime.utcnow())
             inv2 = Invoice(invoice_number='INV-002', customer_name='Customer 2', total=500.0, status='issued', issued_at=datetime.utcnow())
             
             db.session.add_all([self.user_usd, self.user_eur, inv1, inv2])
             db.session.commit()
+            # ensure deterministic rates are set on the active app context
+            self.app.config['EXCHANGE_RATES'] = self.app.config.get('EXCHANGE_RATES')
     
     def tearDown(self):
         with self.app.app_context():
@@ -139,22 +205,44 @@ class TestCurrencyInvoices(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 data = response.get_json()
                 self.assertGreater(len(data), 0)
-                # First invoice: 100 USD * 0.92 = 92 EUR
-                self.assertAlmostEqual(data[0]['total'], 92.0, places=2)
+                # Find the invoice INV-001 in the returned list and verify conversion
+                inv = next((i for i in data if i.get('invoice_number') == 'INV-001'), None)
+                self.assertIsNotNone(inv)
+                # INV-001: 100 USD * 0.92 = 92 EUR
+                self.assertAlmostEqual(inv['total'], 92.0, places=2)
 
 class TestCurrencyCollections(unittest.TestCase):
     def setUp(self):
         self.app = create_app()
         self.app.config['TESTING'] = True
+        # Disable CSRF for test client
+        self.app.config['WTF_CSRF_ENABLED'] = False
         self.app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+        # Use deterministic exchange rates for tests
+        self.app.config['EXCHANGE_RATES'] = {
+            'USD': 1.0,
+            'EUR': 0.92,
+            'GBP': 0.79,
+            'INR': 83.12,
+            'RON': 4.5,
+            'CAD': 1.35,
+            'AUD': 1.45,
+            'JPY': 110.0,
+            'CNY': 7.0,
+            'AED': 3.67
+        }
         self.client = self.app.test_client()
         
         with self.app.app_context():
             db.create_all()
             
             # Create test users
-            self.user_usd = User(username='user_usd', password_hash='pass', role='admin', currency='USD')
-            self.user_gbp = User(username='user_gbp', password_hash='pass', role='admin', currency='GBP')
+            for uname in ('user_usd','user_gbp'):
+                ex = User.query.filter_by(username=uname).first()
+                if ex:
+                    db.session.delete(ex)
+            self.user_usd = User(username='user_usd', password_hash=generate_password_hash('pass'), role='admin', currency='USD')
+            self.user_gbp = User(username='user_gbp', password_hash=generate_password_hash('pass'), role='admin', currency='GBP')
             
             # Create test collections with payments
             col1 = Collection(customer_name='Customer A', total_amount=200.0, paid_amount=100.0, balance=100.0, status='pending')
@@ -166,6 +254,8 @@ class TestCurrencyCollections(unittest.TestCase):
             pay1.collection_id = col1.id
             db.session.add(pay1)
             db.session.commit()
+            # ensure deterministic rates are set on the active app context
+            self.app.config['EXCHANGE_RATES'] = self.app.config.get('EXCHANGE_RATES')
     
     def tearDown(self):
         with self.app.app_context():

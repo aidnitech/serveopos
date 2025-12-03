@@ -8,6 +8,7 @@ class User(db.Model, UserMixin):
     password_hash = db.Column(db.String(128), nullable=False)
     role = db.Column(db.String(20), default="waiter")  # admin/manager/waiter/kitchen
     currency = db.Column(db.String(3), default="USD")  # e.g., USD, EUR, GBP, INR, etc.
+    locale = db.Column(db.String(10), nullable=True)  # e.g., en, es, pt, hi
 
 class MenuItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)

@@ -12,8 +12,29 @@ def create_app():
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+    # Ensure templates can call `csrf_token()` even if Flask-WTF doesn't auto-register it
+    try:
+        from flask_wtf.csrf import generate_csrf
+        app.jinja_env.globals['csrf_token'] = lambda: generate_csrf()
+    except Exception:
+        pass
     from extensions import babel
     babel.init_app(app)
+    # Register locale selector if available
+    try:
+        from extensions import get_locale
+        # Some Flask-Babel versions expose a 'localeselector' decorator on the Babel instance,
+        # others expect registration via function call. Try both defensively.
+        try:
+            babel.localeselector(get_locale)
+        except Exception:
+            try:
+                # fallback to attribute-based registration
+                babel.get_locale = get_locale
+            except Exception:
+                pass
+    except Exception:
+        pass
 
     # Register blueprints
     register_blueprints(app)

@@ -13,7 +13,6 @@ migrate = Migrate()
 login_manager = LoginManager()
 login_manager.login_view = "auth.login"
 csrf = CSRFProtect()
-babel = Babel()
 
 
 # Currency conversion utility
@@ -77,17 +76,21 @@ def schedule_exchange_rate_updater(app, interval_seconds=60*60*6):
     t.start()
 
 
-@babel.localeselector
+babel = Babel()
+
+
 def get_locale():
-    """Locale selector used by Flask-Babel. Prefer current_user.locale if available, else accept-language header."""
+    """Locale selector used by Flask-Babel. Prefer current_user.locale if available, else accept-language header.
+
+    Note: some Flask-Babel versions expect the selector to be registered via decorator; to keep compatibility
+    we provide this function and let the application register it if desired.
+    """
     try:
         from flask import request
         from flask_login import current_user
         if getattr(current_user, 'is_authenticated', False):
-            # fall back to user's currency or role, but ideally add locale field to User
             if hasattr(current_user, 'locale') and current_user.locale:
                 return current_user.locale
-        # default to request accept languages
         return request.accept_languages.best_match(current_app.config.get('LANGUAGES', ['en']))
     except Exception:
         return 'en'

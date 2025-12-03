@@ -1010,6 +1010,34 @@ def set_user_currency(user_id):
         return jsonify({'error': str(e)}), 500
 
 
+@admin_bp.route('/api/users/<int:user_id>/locale', methods=['PUT'])
+@login_required
+@permission_required('manage_users')
+def set_user_locale(user_id):
+    """Update user's locale/language preference"""
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        data = request.get_json() or {}
+        new_locale = (data.get('locale') or '').strip()
+        if not new_locale:
+            return jsonify({'error': 'Invalid locale'}), 400
+        supported = current_app.config.get('LANGUAGES', ['en'])
+        if new_locale not in supported:
+            return jsonify({'error': f'Unsupported locale. Supported: {", ".join(supported)}'}), 400
+        old = user.locale
+        user.locale = new_locale
+        db.session.commit()
+        log = AuditLog(user_id=getattr(current_user, 'id', None), username=getattr(current_user, 'username', None), action='update', object_type='user_locale', object_id=user_id, details=f'Locale changed from {old} to {new_locale}')
+        db.session.add(log)
+        db.session.commit()
+        return jsonify({'status': 'ok', 'locale': new_locale})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
 @admin_bp.route('/api/exchange-rates', methods=['GET'])
 @login_required
 @permission_required('view_accounting')

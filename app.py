@@ -12,6 +12,8 @@ def create_app():
     migrate.init_app(app, db)
     login_manager.init_app(app)
     csrf.init_app(app)
+    from extensions import babel
+    babel.init_app(app)
 
     # Register blueprints
     register_blueprints(app)

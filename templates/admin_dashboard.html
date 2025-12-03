@@ -1,15 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard{% endblock %}
 {% block content %}
-<h1 class="mb-4">Admin Dashboard</h1>
+<h1 class="mb-4">{{ _('Admin Dashboard') }}</h1>
 
 <!-- Currency Settings Card -->
 <div class="row mb-4">
 	<div class="col-md-3">
 		<div class="card">
-			<div class="card-header">User Settings</div>
+			<div class="card-header">{{ _('User Settings') }}</div>
 			<div class="card-body">
-				<label for="currency-selector" class="form-label">Preferred Currency</label>
+				<label for="currency-selector" class="form-label">{{ _('Preferred Currency') }}</label>
 				<select class="form-select" id="currency-selector">
 					<option value="USD">USD - US Dollar</option>
 					<option value="EUR">EUR - Euro</option>
@@ -22,7 +22,7 @@
 					<option value="CNY">CNY - Chinese Yuan</option>
 					<option value="AED">AED - UAE Dirham</option>
 				</select>
-				<small class="form-text text-muted mt-2 d-block">All monetary values will display in your selected currency</small>
+				<small class="form-text text-muted mt-2 d-block">{{ _('All monetary values will display in your selected currency') }}</small>
 			</div>
 		</div>
 	</div>
@@ -31,7 +31,7 @@
 <div class="row">
 	<div class="col-md-6">
 		<div class="card mb-4">
-			<div class="card-header">Manage Menu</div>
+			<div class="card-header">{{ _('Manage Menu') }}</div>
 			<div class="card-body">
 				<form id="menu-form">
 					<div class="mb-2">

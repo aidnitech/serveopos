@@ -10,6 +10,7 @@ def register_blueprints(app):
     from .kds.routes import kds_bp
     from .menu.routes import menu_bp
     from .pos.routes import pos_bp
+    from .payments.routes import payments_bp
 
     # Register with correct URL prefixes
     app.register_blueprint(admin_bp, url_prefix="/admin")
@@ -20,3 +21,4 @@ def register_blueprints(app):
     app.register_blueprint(kds_bp, url_prefix="/kds")
     app.register_blueprint(menu_bp, url_prefix="/menu")
     app.register_blueprint(pos_bp, url_prefix="/pos")
+    app.register_blueprint(payments_bp, url_prefix="/payments")

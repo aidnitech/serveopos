@@ -1,8 +1,8 @@
-from flask import render_template, request, jsonify, send_file
+from flask import render_template, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
 from . import admin_bp
 from decorators import admin_required, permission_required
-from extensions import db
+from extensions import db, convert_currency
 from models import MenuItem, InventoryItem, PriceHistory, AuditLog, RolePermission, Transaction, Collection, Payment
 from models import Invoice
 import csv, io
@@ -25,11 +25,13 @@ def dashboard():
 def api_get_menu():
     try:
         items = MenuItem.query.order_by(MenuItem.id.desc()).all()
+        user_currency = current_user.currency
+        rates = current_app.config.get('EXCHANGE_RATES', {})
         return jsonify([{
             "id": i.id,
             "name": i.name,
             "description": i.description,
-            "price": i.price,
+            "price": convert_currency(i.price, 'USD', user_currency, rates),
             "available": i.available
         } for i in items])
     except Exception as e:
@@ -156,7 +158,9 @@ def api_accounting_summary():
     try:
         income = db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0)).filter(Transaction.transaction_type=='income').scalar() or 0
         expenses = db.session.query(db.func.coalesce(db.func.sum(Transaction.amount), 0)).filter(Transaction.transaction_type=='expense').scalar() or 0
-        return jsonify({'income': float(income), 'expenses': float(expenses)})
+        user_currency = current_user.currency
+        rates = current_app.config.get('EXCHANGE_RATES', {})
+        return jsonify({'income': convert_currency(float(income), 'USD', user_currency, rates), 'expenses': convert_currency(float(expenses), 'USD', user_currency, rates)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -167,9 +171,11 @@ def api_accounting_summary():
 def api_get_collections():
     try:
         cols = Collection.query.order_by(Collection.id.desc()).all()
+        user_currency = current_user.currency
+        rates = current_app.config.get('EXCHANGE_RATES', {})
         out = []
         for c in cols:
-            out.append({'id': c.id, 'customer': c.customer_name, 'phone': c.customer_phone, 'total': c.total_amount, 'paid': c.paid_amount, 'balance': c.balance, 'status': c.status, 'due_date': c.due_date.isoformat() if c.due_date else None, 'payments': [{'id': p.id, 'amount': p.amount, 'method': p.payment_method, 'reference': p.reference_id, 'received_by': p.received_by, 'created_at': p.payment_date.isoformat() if p.payment_date else None} for p in c.payments]})
+            out.append({'id': c.id, 'customer': c.customer_name, 'phone': c.customer_phone, 'total': convert_currency(c.total_amount, 'USD', user_currency, rates), 'paid': convert_currency(c.paid_amount, 'USD', user_currency, rates), 'balance': convert_currency(c.balance, 'USD', user_currency, rates), 'status': c.status, 'due_date': c.due_date.isoformat() if c.due_date else None, 'payments': [{'id': p.id, 'amount': convert_currency(p.amount, 'USD', user_currency, rates), 'method': p.payment_method, 'reference': p.reference_id, 'received_by': p.received_by, 'created_at': p.payment_date.isoformat() if p.payment_date else None} for p in c.payments]})
         return jsonify(out)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -202,7 +208,9 @@ def api_create_collection():
 def api_get_collection(col_id):
     try:
         c = Collection.query.get_or_404(col_id)
-        return jsonify({'id': c.id, 'customer': c.customer_name, 'phone': c.customer_phone, 'total': c.total_amount, 'paid': c.paid_amount, 'balance': c.balance, 'status': c.status, 'payments': [{'id': p.id, 'amount': p.amount, 'method': p.payment_method, 'reference': p.reference_id, 'received_by': p.received_by, 'created_at': p.payment_date.isoformat() if p.payment_date else None} for p in c.payments]})
+        user_currency = current_user.currency
+        rates = current_app.config.get('EXCHANGE_RATES', {})
+        return jsonify({'id': c.id, 'customer': c.customer_name, 'phone': c.customer_phone, 'total': convert_currency(c.total_amount, 'USD', user_currency, rates), 'paid': convert_currency(c.paid_amount, 'USD', user_currency, rates), 'balance': convert_currency(c.balance, 'USD', user_currency, rates), 'status': c.status, 'payments': [{'id': p.id, 'amount': convert_currency(p.amount, 'USD', user_currency, rates), 'method': p.payment_method, 'reference': p.reference_id, 'received_by': p.received_by, 'created_at': p.payment_date.isoformat() if p.payment_date else None} for p in c.payments]})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -303,9 +311,11 @@ def api_collection_summary():
 def api_get_invoices():
     try:
         invs = Invoice.query.order_by(Invoice.id.desc()).all()
+        user_currency = current_user.currency
+        rates = current_app.config.get('EXCHANGE_RATES', {})
         out = []
         for i in invs:
-            out.append({'id': i.id, 'invoice_number': i.invoice_number, 'customer': i.customer_name, 'total': i.total, 'status': i.status, 'issued_at': i.issued_at.isoformat() if i.issued_at else None})
+            out.append({'id': i.id, 'invoice_number': i.invoice_number, 'customer': i.customer_name, 'total': convert_currency(i.total, 'USD', user_currency, rates), 'status': i.status, 'issued_at': i.issued_at.isoformat() if i.issued_at else None})
         return jsonify(out)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -954,6 +964,46 @@ def api_update_role():
             db.session.add(log)
             db.session.commit()
         return jsonify({'status':'ok'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/api/users/<int:user_id>/currency', methods=['PUT'])
+@login_required
+@permission_required('manage_users')
+def set_user_currency(user_id):
+    """Update user's currency preference"""
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({'error': 'User not found'}), 404
+        
+        data = request.get_json()
+        new_currency = data.get('currency', '').upper()
+        
+        if not new_currency or len(new_currency) != 3:
+            return jsonify({'error': 'Invalid currency code'}), 400
+        
+        supported_currencies = ['USD', 'EUR', 'GBP', 'INR', 'RON', 'CAD', 'AUD', 'JPY', 'CNY', 'AED']
+        if new_currency not in supported_currencies:
+            return jsonify({'error': f'Unsupported currency. Supported: {", ".join(supported_currencies)}'}), 400
+        
+        old_currency = user.currency
+        user.currency = new_currency
+        db.session.commit()
+        
+        log = AuditLog(
+            user_id=getattr(current_user, 'id', None),
+            username=getattr(current_user, 'username', None),
+            action='update',
+            object_type='user_currency',
+            object_id=user_id,
+            details=f'Currency changed from {old_currency} to {new_currency}'
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({'status': 'ok', 'message': f'Currency updated to {new_currency}', 'currency': new_currency})
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': str(e)}), 500

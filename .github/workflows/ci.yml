@@ -42,3 +42,18 @@ PY
           FLASK_ENV: development
         run: |
           PYTHONPATH=. python tests/verify_pos.py
+
+      - name: Run pytest
+        env:
+          FLASK_APP: app.py
+        run: |
+          python -m pip install pytest
+          PYTHONPATH=. python -m pytest -q || true
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: |
+            ./tests/*.log
+            ./.pytest_cache || true

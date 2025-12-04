@@ -18,10 +18,16 @@ def setup_data():
         app.config['TESTING'] = True
         # If the app uses Flask-WTF CSRF, disable it for tests
         app.config['WTF_CSRF_ENABLED'] = False
-        # Reset the database to avoid UNIQUE constraint conflicts when
-        # running the smoke script multiple times in the same environment.
-        db.drop_all()
-        db.create_all()
+        # Clear data instead of dropping schema to avoid breaking other tests
+        try:
+            for table in reversed(db.metadata.sorted_tables):
+                try:
+                    db.session.execute(table.delete())
+                except Exception:
+                    pass
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
         # Create restaurant
         restaurant = Restaurant(name='Test Resto', email='resto@example.com', phone='123', address='Addr', owner_id=1)

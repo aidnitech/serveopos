@@ -30,9 +30,16 @@ def setup_app():
 def test_order_checkout_flow():
     app = setup_app()
     with app.app_context():
-        # ensure a clean db
-        db.drop_all()
-        db.create_all()
+        # Clear data (but keep schema) instead of dropping entirely
+        try:
+            for table in reversed(db.metadata.sorted_tables):
+                try:
+                    db.session.execute(table.delete())
+                except Exception:
+                    pass
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
 
         # create fixture data via direct model imports to keep test focused
         from models import Product, PaymentMethod, Restaurant, User

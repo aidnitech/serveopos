@@ -47,7 +47,16 @@ class TestCurrencyConversion(unittest.TestCase):
     def tearDown(self):
         with self.app.app_context():
             db.session.remove()
-            db.drop_all()
+            # Clear rows instead of dropping schema to avoid breaking other tests
+            try:
+                for table in reversed(db.metadata.sorted_tables):
+                    try:
+                        db.session.execute(table.delete())
+                    except Exception:
+                        pass
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     
     def test_convert_currency_usd_to_eur(self):
         """Test converting USD to EUR"""
@@ -193,7 +202,16 @@ class TestCurrencyInvoices(unittest.TestCase):
     def tearDown(self):
         with self.app.app_context():
             db.session.remove()
-            db.drop_all()
+            # Clear rows instead of dropping schema to avoid breaking other tests
+            try:
+                for table in reversed(db.metadata.sorted_tables):
+                    try:
+                        db.session.execute(table.delete())
+                    except Exception:
+                        pass
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     
     def test_invoices_converted_in_user_currency(self):
         """Test that invoices API returns amounts in user's currency"""
@@ -260,7 +278,16 @@ class TestCurrencyCollections(unittest.TestCase):
     def tearDown(self):
         with self.app.app_context():
             db.session.remove()
-            db.drop_all()
+            # Clear rows instead of dropping schema to avoid breaking other tests
+            try:
+                for table in reversed(db.metadata.sorted_tables):
+                    try:
+                        db.session.execute(table.delete())
+                    except Exception:
+                        pass
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
     
     def test_collections_converted_in_user_currency(self):
         """Test that collections API returns amounts in user's currency"""

@@ -15,7 +15,16 @@ client = app.test_client()
 
 def setup_test():
     with app.app_context():
-        db.drop_all(); db.create_all()
+        # Clear rows instead of dropping schema to avoid breaking other tests
+        try:
+            for table in reversed(db.metadata.sorted_tables):
+                try:
+                    db.session.execute(table.delete())
+                except Exception:
+                    pass
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         admin = User(username='admin', password_hash=generate_password_hash('admin'), role='admin')
         waiter = User(username='waiter', password_hash=generate_password_hash('waiter'), role='waiter')
         db.session.add_all([admin, waiter]); db.session.commit()

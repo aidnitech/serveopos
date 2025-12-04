@@ -17,8 +17,16 @@ client = app.test_client()
 def setup_test_data():
     """Initialize test database"""
     with app.app_context():
-        db.drop_all()
-        db.create_all()
+        # Instead of dropping the schema, clear rows and reseed
+        try:
+            for table in reversed(db.metadata.sorted_tables):
+                try:
+                    db.session.execute(table.delete())
+                except Exception:
+                    pass
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
         
         # Create test users
         admin = User(username="admin", password_hash=generate_password_hash("admin"), role="admin")

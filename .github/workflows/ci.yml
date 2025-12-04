@@ -19,6 +19,23 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      - name: Prepare DB and stamp baseline
+        env:
+          FLASK_APP: app.py
+          FLASK_ENV: development
+        run: |
+          mkdir -p instance
+          # Create DB schema from models, then stamp Alembic baseline
+          python - <<'PY'
+from app import create_app
+from extensions import db
+app = create_app()
+with app.app_context():
+    db.create_all()
+    print('DB created from models')
+PY
+          python -m flask db stamp 001_baseline
+
       - name: Run smoke verification script
         env:
           FLASK_APP: app.py

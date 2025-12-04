@@ -52,7 +52,8 @@ def permission_required(permission):
 def admin_required(func):
     @wraps(func)
     def wrapper(*args, **kwargs):
-        if not current_user.is_authenticated or current_user.role not in ["admin", "manager"]:
+        # Allow platform and restaurant admins, plus managers
+        if not current_user.is_authenticated or current_user.role not in ["admin", "manager", "restaurant_admin", "super_admin"]:
             abort(403)
         return func(*args, **kwargs)
 

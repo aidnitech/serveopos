@@ -140,11 +140,17 @@ def generate_receipt_content(order, payment):
         lines.append("-" * 40)
         
         total = 0
+        from models import Product
         for item in order.items:
-            subtotal = item.menu_item.price * item.quantity
+            menu = item.menu_item
+            if not menu:
+                menu = Product.query.get(item.menu_item_id)
+            name = getattr(menu, 'name', 'Item')
+            unit_price = getattr(menu, 'price', getattr(menu, 'base_price', 0))
+            subtotal = unit_price * item.quantity
             total += subtotal
-            lines.append(f"{item.menu_item.name}")
-            lines.append(f"  {item.quantity} x ${item.menu_item.price:.2f} = ${subtotal:.2f}")
+            lines.append(f"{name}")
+            lines.append(f"  {item.quantity} x ${unit_price:.2f} = ${subtotal:.2f}")
         
         lines.append("-" * 40)
         lines.append(f"Subtotal: ${total:.2f}")

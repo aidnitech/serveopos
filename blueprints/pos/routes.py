@@ -172,14 +172,21 @@ def get_order(order_id):
             return jsonify({"error": "Order not found"}), 404
         
         items = []
+        from models import Product
         for item in order.items:
+            # menu_item may be None if OrderItem references a Product id instead
+            menu = item.menu_item
+            if not menu:
+                menu = Product.query.get(item.menu_item_id)
+            name = getattr(menu, 'name', None)
+            price = getattr(menu, 'price', getattr(menu, 'base_price', 0))
             items.append({
                 "id": item.id,
                 "product_id": item.menu_item_id,
-                "name": item.menu_item.name,
+                "name": name,
                 "quantity": item.quantity,
-                "price": item.menu_item.price,
-                "subtotal": item.menu_item.price * item.quantity,
+                "price": price,
+                "subtotal": price * item.quantity,
                 "notes": [{"type": n.note_type, "content": n.content} for n in item.notes]
             })
         
@@ -486,14 +493,22 @@ def search_customers():
             (Customer.barcode.ilike(f"%{query_term}%"))
         ).all()
         
-        return jsonify([{
-            "id": c.id,
-            "name": c.name,
-            "email": c.email,
-            "phone": c.phone,
-            "loyalty_points": c.loyalty_card.points_balance if c.loyalty_card else 0,
-            "ewallet_balance": c.wallet.balance if c.wallet else 0
-        } for c in customers])
+        # Be defensive: fetch loyalty card / wallet via queries to avoid
+        # surprises if relationships are configured differently.
+        out = []
+        from models import LoyaltyCard, eWallet as EWalletModel
+        for c in customers:
+            loyalty = LoyaltyCard.query.filter_by(customer_id=c.id).first()
+            wallet = EWalletModel.query.filter_by(customer_id=c.id).first()
+            out.append({
+                "id": c.id,
+                "name": c.name,
+                "email": c.email,
+                "phone": c.phone,
+                "loyalty_points": loyalty.points_balance if loyalty else 0,
+                "ewallet_balance": wallet.balance if wallet else 0
+            })
+        return jsonify(out)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -507,9 +522,11 @@ def get_customer_loyalty(customer_id):
         if not customer:
             return jsonify({"error": "Customer not found"}), 404
         
-        loyalty_card = customer.loyalty_card
-        wallet = customer.wallet
-        
+        # Defensive fetch in case relationships are lists or misconfigured
+        from models import LoyaltyCard, eWallet as EWalletModel
+        loyalty_card = LoyaltyCard.query.filter_by(customer_id=customer.id).first()
+        wallet = EWalletModel.query.filter_by(customer_id=customer.id).first()
+
         return jsonify({
             "customer_id": customer.id,
             "name": customer.name,
@@ -531,20 +548,25 @@ def redeem_loyalty_points(customer_id):
     """Redeem loyalty points"""
     try:
         customer = Customer.query.get(customer_id)
-        if not customer or not customer.loyalty_card:
-            return jsonify({"error": "Customer or loyalty card not found"}), 404
-        
-        data = request.get_json()
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+
+        # Defensive lookup for loyalty card
+        from models import LoyaltyCard
+        loyalty_card = LoyaltyCard.query.filter_by(customer_id=customer.id).first()
+        if not loyalty_card:
+            return jsonify({"error": "Loyalty card not found"}), 404
+
+        data = request.get_json() or {}
         reward_id = data.get("reward_id")
-        points_to_redeem = data.get("points")
-        
-        loyalty_card = customer.loyalty_card
+        points_to_redeem = int(data.get("points", 0))
+
         if loyalty_card.points_balance < points_to_redeem:
             return jsonify({"error": "Insufficient loyalty points"}), 400
-        
+
         loyalty_card.points_balance -= points_to_redeem
         loyalty_card.points_redeemed_total += points_to_redeem
-        
+
         points_record = LoyaltyPoints(
             loyalty_card_id=loyalty_card.id,
             points=-points_to_redeem,
@@ -553,7 +575,7 @@ def redeem_loyalty_points(customer_id):
         )
         db.session.add(points_record)
         db.session.commit()
-        
+
         return jsonify({"message": "Points redeemed", "remaining_points": loyalty_card.points_balance})
     except Exception as e:
         db.session.rollback()
@@ -567,20 +589,26 @@ def topup_ewallet_endpoint(customer_id):
     """Top-up customer e-wallet"""
     try:
         customer = Customer.query.get(customer_id)
-        if not customer or not customer.wallet:
-            return jsonify({"error": "Customer or e-wallet not found"}), 404
-        
-        data = request.get_json()
-        amount = data.get("amount")
+        if not customer:
+            return jsonify({"error": "Customer not found"}), 404
+
+        # Defensive lookup for wallet
+        from models import eWallet as EWalletModel
+        wallet = EWalletModel.query.filter_by(customer_id=customer.id).first()
+        if not wallet:
+            return jsonify({"error": "E-wallet not found"}), 404
+
+        data = request.get_json() or {}
+        amount = float(data.get("amount", 0))
         payment_method_id = data.get("payment_method_id")
-        
+
         if amount <= 0:
             return jsonify({"error": "Amount must be positive"}), 400
-        
-        topup_ewallet(customer.wallet, amount, payment_method_id)
+
+        topup_ewallet(wallet, amount, payment_method_id)
         db.session.commit()
-        
-        return jsonify({"message": "E-wallet topped up", "new_balance": customer.wallet.balance})
+
+        return jsonify({"message": "E-wallet topped up", "new_balance": wallet.balance})
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": str(e)}), 500

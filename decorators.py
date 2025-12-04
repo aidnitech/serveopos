@@ -54,6 +54,12 @@ def admin_required(func):
     def wrapper(*args, **kwargs):
         # Allow platform and restaurant admins, plus managers
         if not current_user.is_authenticated or current_user.role not in ["admin", "manager", "restaurant_admin", "super_admin"]:
+            try:
+                a = AuditLog(user_id=getattr(current_user, 'id', None), username=getattr(current_user, 'username', None), action='forbidden', object_type='admin_access', object_id=None, details=f'role={current_user.role} denied admin access')
+                db.session.add(a)
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
             abort(403)
         return func(*args, **kwargs)
 

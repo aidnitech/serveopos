@@ -34,7 +34,7 @@ def safe_reset_db(app=app):
 
         # Seed basic users and menu items expected by tests
         try:
-            from models import User, MenuItem
+            from models import User, MenuItem, InventoryItem
 
             admin = User(username="admin", password_hash=generate_password_hash("admin"), role="admin")
             waiter = User(username="waiter", password_hash=generate_password_hash("waiter"), role="waiter")
@@ -45,6 +45,10 @@ def safe_reset_db(app=app):
             db.session.add(MenuItem(name="Chicken Sizzler", description="Hot sizzling platter", price=45.0))
             db.session.add(MenuItem(name="Paneer Tikka Sizzler", description="Vegetarian delight", price=40.0))
             db.session.add(MenuItem(name="Pasta Alfredo", description="Continental creamy pasta", price=35.0))
+            
+            # Add inventory items for tests that expect them
+            db.session.add(InventoryItem(name="Chicken", quantity=50, unit="kg"))
+            db.session.add(InventoryItem(name="Oil", quantity=20, unit="liters"))
             db.session.commit()
         except Exception:
             pass

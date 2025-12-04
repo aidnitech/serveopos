@@ -130,17 +130,35 @@ def create_order():
         db.session.flush()
         
         for item in data["items"]:
-            product = Product.query.get(item.get("product_id"))
-            if not product:
-                return jsonify({"error": f"Product {item.get('product_id')} not found"}), 404
-            
-            quantity = item.get("quantity", 1)
+            # Accept either menu_item_id (MenuItem) or product_id (Product)
+            menu_item = None
+            if item.get("menu_item_id"):
+                menu_item = MenuItem.query.get(item.get("menu_item_id"))
+            elif item.get("product_id"):
+                # product may be a Product record; try to map to MenuItem first
+                product = Product.query.get(item.get("product_id"))
+                if product:
+                    # if there's a MenuItem with same id (legacy), use it; otherwise create a lightweight mapping
+                    menu_item = MenuItem.query.get(product.id)
+                    if not menu_item:
+                        # create temporary placeholder-like object using product fields
+                        class _Tmp:
+                            pass
+                        menu_item = _Tmp()
+                        menu_item.id = product.id
+                        menu_item.name = product.name
+                        menu_item.price = getattr(product, 'base_price', getattr(product, 'price', 0))
+
+            if not menu_item:
+                return jsonify({"error": f"Menu/Product not found for item {item}"}), 404
+
+            quantity = int(item.get("quantity", 1))
             if quantity < 1:
                 return jsonify({"error": "Quantity must be at least 1"}), 400
-            
+
             order_item = OrderItem(
                 order_id=order.id,
-                menu_item_id=product.id,  # Reusing menu_item_id for product_id
+                menu_item_id=menu_item.id,
                 quantity=quantity
             )
             db.session.add(order_item)

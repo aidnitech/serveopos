@@ -3,6 +3,7 @@ from flask_login import login_required
 from models import Order, OrderItem
 from decorators import permission_required
 from . import kds_bp
+from flask import render_template
 
 @kds_bp.route("/orders")
 @login_required
@@ -14,10 +15,16 @@ def pending_orders():
         for o in orders:
             items = []
             for item in o.items:
+                # Be defensive: menu_item relationship may be None if OrderItem stores a product id
+                menu = item.menu_item
+                if not menu:
+                    from models import Product
+                    menu = Product.query.get(item.menu_item_id)
+
                 items.append({
-                    "name": item.menu_item.name,
+                    "name": getattr(menu, 'name', None) or 'Unknown',
                     "quantity": item.quantity,
-                    "price": item.menu_item.price
+                    "price": float(getattr(menu, 'price', getattr(menu, 'base_price', 0) or 0))
                 })
             order_data.append({
                 "id": o.id,
@@ -28,3 +35,13 @@ def pending_orders():
         return jsonify(order_data)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@kds_bp.route("/")
+@login_required
+@permission_required('manage_orders')
+def kds_home():
+    try:
+        return render_template('kds.html')
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

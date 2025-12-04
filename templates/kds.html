@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Kitchen Display (KDS){% endblock %}
+{% block content %}
+<h1>Kitchen Display</h1>
+<p class="text-muted">Pending orders for preparation. This view auto-refreshes every 5 seconds.</p>
+<div id="orders-list">Loading orders...</div>
+
+<script>
+async function fetchOrders(){
+  try{
+    const res = await fetch('/kds/orders', {headers: {'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').content}});
+    const data = await res.json();
+    const el = document.getElementById('orders-list');
+    if(!Array.isArray(data)) return el.innerText = 'Error loading orders';
+    if(data.length===0) return el.innerHTML = '<p>No pending orders</p>';
+    el.innerHTML = data.map(o=>{
+      return `<div class="card mb-2"><div class="card-header">Order #${o.id} — ${o.status} <small class="text-muted">${o.created_at}</small></div><div class="card-body"><ul class="list-group">${o.items.map(it=>`<li class="list-group-item d-flex justify-content-between"><div><strong>${it.name}</strong><div class="small text-muted">Qty: ${it.quantity}</div></div><div>${Number(it.price).toFixed(2)}</div></li>`).join('')}</ul></div></div>`;
+    }).join('');
+  }catch(e){ console.warn(e); document.getElementById('orders-list').innerText = 'Error'; }
+}
+
+fetchOrders();
+setInterval(fetchOrders, 5000);
+</script>
+{% endblock %}

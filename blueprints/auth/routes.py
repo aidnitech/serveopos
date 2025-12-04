@@ -5,6 +5,7 @@ from extensions import db, login_manager, limiter
 from models import User
 from services.totp import generate_totp_secret, verify_totp_token, use_backup_code
 from . import auth_bp
+from flask import current_app
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -176,4 +177,17 @@ def logout():
     logout_user()
     flash("You have been logged out", "info")
     return redirect(url_for("auth.login"))
+
+
+@auth_bp.route('/debug-status')
+def debug_status():
+    """Temporary debug endpoint: shows current_user and session keys when running in debug mode."""
+    if not current_app.debug:
+        return jsonify({'error': 'debug endpoint disabled'}), 404
+    return jsonify({
+        'is_authenticated': getattr(current_user, 'is_authenticated', False),
+        'username': getattr(current_user, 'username', None),
+        'role': getattr(current_user, 'role', None),
+        'session_keys': list(session.keys())
+    }), 200
 

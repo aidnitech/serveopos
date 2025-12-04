@@ -32,3 +32,10 @@ def get_menu_items_api():
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@menu_bp.route('/api/menu-items', methods=['GET'])
+@login_required
+def get_menu_items_alias():
+    """Backward-compatible alias used by POS front-end (returns {items: [...]})"""
+    return get_menu_items_api()

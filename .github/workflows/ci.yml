@@ -48,7 +48,7 @@ PY
           FLASK_APP: app.py
         run: |
           python -m pip install pytest
-          PYTHONPATH=. python -m pytest -q || true
+          PYTHONPATH=. python -m pytest -q
 
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4

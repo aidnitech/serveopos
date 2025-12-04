@@ -1,7 +1,7 @@
 """Add comprehensive POS features
 
-Revision ID: 007
-Revises: 006
+Revision ID: 007_add_pos_features
+Revises: 006_add_restaurant_store_settings
 Create Date: 2025-12-04 12:00:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '007'
-down_revision = '006'
+revision = '007_add_pos_features'
+down_revision = '006_add_restaurant_store_settings'
 branch_labels = None
 depends_on = None
 

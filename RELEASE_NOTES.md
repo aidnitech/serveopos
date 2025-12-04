@@ -36,3 +36,10 @@ Beta next steps
 - Validate and fix migrations for a clean `alembic` history.
 - Add more unit tests and CI coverage for critical flows (payments, refunds, loyalty).
 - Harden authentication/authorization and production config for rate-limiting and CSRF.
+
+**Company**
+- **Company Name:** Aidni Global LLP
+- **Developed By:** Hardik Gajjar
+- **Contact Email:** info@aidniglobal.in
+
+© 2025 Aidni Global LLP. All rights reserved.

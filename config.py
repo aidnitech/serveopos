@@ -21,3 +21,5 @@ class Config:
         "CNY": 7.24,
         "AED": 3.67,
     }
+    ENABLE_EXCHANGE_UPDATER = True
+    EXCHANGE_UPDATE_INTERVAL = 60*60*6  # 6 hours

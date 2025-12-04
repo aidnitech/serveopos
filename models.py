@@ -183,3 +183,433 @@ class StoreSettings(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     restaurant = db.relationship('Restaurant', backref='store_settings', uselist=False)
 
+
+# ============================================================================
+# PRODUCTS & CATEGORIES
+# ============================================================================
+class ProductCategory(db.Model):
+    """Product categories - hierarchical structure"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)
+    description = db.Column(db.Text)
+    parent_id = db.Column(db.Integer, db.ForeignKey('product_category.id'), nullable=True)  # For hierarchy
+    display_order = db.Column(db.Integer, default=0)  # Order by popularity
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    parent = db.relationship('ProductCategory', remote_side=[id], backref='subcategories')
+    products = db.relationship('Product', backref='category')
+
+
+class Product(db.Model):
+    """POS Products with multiple barcodes and variants"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    category_id = db.Column(db.Integer, db.ForeignKey('product_category.id'), nullable=True)
+    name = db.Column(db.String(128), nullable=False)
+    description = db.Column(db.Text)
+    sku = db.Column(db.String(64), unique=True, nullable=True)
+    base_price = db.Column(db.Float, nullable=False)
+    cost = db.Column(db.Float, nullable=True)
+    available = db.Column(db.Boolean, default=True)
+    requires_weight = db.Column(db.Boolean, default=False)  # Requires electronic scale
+    unit_of_measure = db.Column(db.String(32), default='unit')  # unit, kg, L, etc.
+    weight = db.Column(db.Float, nullable=True)  # For fixed weight products
+    ship_later = db.Column(db.Boolean, default=False)  # Can be shipped later
+    is_gift_card = db.Column(db.Boolean, default=False)
+    gift_card_validity_days = db.Column(db.Integer, nullable=True)  # 0 = no expiry
+    image_url = db.Column(db.String(255), nullable=True)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='products')
+    barcodes = db.relationship('BarcodeMapping', backref='product', cascade='all, delete-orphan')
+    variants = db.relationship('ProductVariant', backref='product', cascade='all, delete-orphan')
+
+
+class ProductVariant(db.Model):
+    """Product variants: sizes, colors, configurations"""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)  # e.g., "Small", "Large", "Red"
+    sku = db.Column(db.String(64), nullable=True)
+    price_adjustment = db.Column(db.Float, default=0.0)  # Add/subtract from base price
+    cost_adjustment = db.Column(db.Float, default=0.0)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BarcodeMapping(db.Model):
+    """Multiple barcodes per product with barcode nomenclature"""
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    barcode = db.Column(db.String(128), unique=True, nullable=False, index=True)
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
+    embedded_price = db.Column(db.Float, nullable=True)  # Price embedded in barcode
+    embedded_weight = db.Column(db.Float, nullable=True)  # Weight embedded in barcode
+    loyalty_points = db.Column(db.Integer, nullable=True)  # Loyalty points in barcode
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    variant = db.relationship('ProductVariant', backref='barcodes')
+
+
+# ============================================================================
+# PAYMENT & CHECKOUT
+# ============================================================================
+class PaymentMethod(db.Model):
+    """Payment methods: cash, cards, checks, etc."""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(64), nullable=False)  # Cash, Credit Card, Debit Card, Check, etc.
+    payment_type = db.Column(db.String(20), nullable=False)  # cash, card, check, online, wallet
+    requires_external_terminal = db.Column(db.Boolean, default=False)
+    can_be_reused = db.Column(db.Boolean, default=True)
+    currency_rounding = db.Column(db.Float, nullable=True)  # Smallest currency denomination
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='payment_methods')
+
+
+class PaymentTransaction(db.Model):
+    """Payment transactions for orders"""
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    payment_method_id = db.Column(db.Integer, db.ForeignKey('payment_method.id'), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    currency = db.Column(db.String(3), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, completed, failed, refunded
+    reference_id = db.Column(db.String(128), nullable=True)  # External transaction ID
+    is_offline = db.Column(db.Boolean, default=False)  # Processed offline
+    synchronization_status = db.Column(db.String(20), default='synced')  # synced, pending_sync, failed_sync
+    tip_amount = db.Column(db.Float, default=0.0)
+    tip_type = db.Column(db.String(20), nullable=True)  # amount, percentage (of change)
+    change_to_tip = db.Column(db.Boolean, default=False)  # Convert change to tip
+    processed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    order = db.relationship('Order', backref='payments')
+    payment_method = db.relationship('PaymentMethod')
+
+
+class Discount(db.Model):
+    """Discounts: product-level or order-level"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)
+    discount_type = db.Column(db.String(20), nullable=False)  # percentage, fixed_amount
+    value = db.Column(db.Float, nullable=False)
+    applies_to = db.Column(db.String(20), default='product')  # product, order
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=True)  # For customer-specific discounts
+    start_date = db.Column(db.DateTime, nullable=True)  # Time-limited
+    end_date = db.Column(db.DateTime, nullable=True)
+    min_quantity = db.Column(db.Integer, default=1)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='discounts')
+
+
+class BillSplit(db.Model):
+    """Bill splitting: split single order between multiple payment methods/parties"""
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    split_index = db.Column(db.Integer)  # Which split (1st, 2nd, etc.)
+    amount = db.Column(db.Float, nullable=False)
+    payment_method_id = db.Column(db.Integer, db.ForeignKey('payment_method.id'), nullable=False)
+    status = db.Column(db.String(20), default='pending')  # pending, completed, failed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    order = db.relationship('Order', backref='bill_splits')
+    payment_method = db.relationship('PaymentMethod')
+
+
+class Receipt(db.Model):
+    """Receipt printing and customization"""
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    receipt_number = db.Column(db.String(64), unique=True, nullable=True)
+    header_text = db.Column(db.Text)  # Store promotions, hours, events
+    footer_text = db.Column(db.Text)
+    content = db.Column(db.Text)  # Full receipt content
+    printed = db.Column(db.Boolean, default=False)
+    printed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    order = db.relationship('Order', backref='receipts')
+
+
+# ============================================================================
+# RESTAURANT MANAGEMENT
+# ============================================================================
+class RestaurantFloorPlan(db.Model):
+    """Custom floor plan for restaurant"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False, unique=True)
+    name = db.Column(db.String(128), default='Main Floor')
+    layout_data = db.Column(db.Text)  # JSON: table positions, zones, etc.
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='floor_plan', uselist=False)
+    sections = db.relationship('TableSection', backref='floor_plan', cascade='all, delete-orphan')
+
+
+class TableSection(db.Model):
+    """Zones/sections in a restaurant (e.g., Indoor, Patio, Bar)"""
+    id = db.Column(db.Integer, primary_key=True)
+    floor_plan_id = db.Column(db.Integer, db.ForeignKey('restaurant_floor_plan.id'), nullable=False)
+    name = db.Column(db.String(64), nullable=False)  # Indoor, Patio, Bar, etc.
+    capacity = db.Column(db.Integer, default=0)  # Total seats in section
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    tables = db.relationship('Table', backref='section', cascade='all, delete-orphan')
+
+
+class Table(db.Model):
+    """Restaurant table"""
+    id = db.Column(db.Integer, primary_key=True)
+    section_id = db.Column(db.Integer, db.ForeignKey('table_section.id'), nullable=False)
+    table_number = db.Column(db.String(32), nullable=False)
+    seats = db.Column(db.Integer, default=2)
+    pos_x = db.Column(db.Float, nullable=True)  # Position in floor plan
+    pos_y = db.Column(db.Float, nullable=True)
+    status = db.Column(db.String(20), default='available')  # available, occupied, reserved
+    current_order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    reserved_by = db.Column(db.String(128), nullable=True)  # Reservation name
+    reserved_until = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    current_order = db.relationship('Order', backref='table', uselist=False, foreign_keys=[current_order_id])
+
+
+class TableBooking(db.Model):
+    """Online table booking via Appointments"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    table_id = db.Column(db.Integer, db.ForeignKey('table.id'), nullable=False)
+    customer_name = db.Column(db.String(128), nullable=False)
+    customer_email = db.Column(db.String(128))
+    customer_phone = db.Column(db.String(20))
+    booking_date = db.Column(db.DateTime, nullable=False)
+    party_size = db.Column(db.Integer, nullable=False)
+    notes = db.Column(db.Text)
+    status = db.Column(db.String(20), default='confirmed')  # confirmed, cancelled, completed
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    table = db.relationship('Table', backref='bookings')
+
+
+class KitchenPrinter(db.Model):
+    """Kitchen and bar printers"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(64), nullable=False)  # "Kitchen Printer 1", "Bar Printer"
+    printer_type = db.Column(db.String(20), nullable=False)  # kitchen, bar
+    ip_address = db.Column(db.String(15), nullable=True)  # Network printer IP
+    device_name = db.Column(db.String(128), nullable=True)  # USB printer device
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class OrderNote(db.Model):
+    """Notes for orders: customer preferences, allergies, special requests"""
+    id = db.Column(db.Integer, primary_key=True)
+    order_item_id = db.Column(db.Integer, db.ForeignKey('order_item.id'), nullable=False)
+    note_type = db.Column(db.String(20), nullable=False)  # preference, allergy, special_request
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    order_item = db.relationship('OrderItem', backref='notes')
+
+
+class DelayedOrder(db.Model):
+    """Delayed orders for different courses"""
+    id = db.Column(db.Integer, primary_key=True)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=False)
+    course_number = db.Column(db.Integer, default=1)  # 1st course, 2nd course, etc.
+    delay_minutes = db.Column(db.Integer, default=0)  # Delay before sending to kitchen
+    sent_to_kitchen = db.Column(db.Boolean, default=False)
+    sent_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    order = db.relationship('Order', backref='delayed_orders')
+
+
+class Kiosk(db.Model):
+    """Self-service kiosk for customer orders"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(64), nullable=False)
+    kiosk_code = db.Column(db.String(32), unique=True, nullable=False)  # QR code reference
+    location = db.Column(db.String(128))
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='kiosks')
+
+
+# ============================================================================
+# CUSTOMER & LOYALTY
+# ============================================================================
+class Customer(db.Model):
+    """Customer registration and profile"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)
+    email = db.Column(db.String(128), nullable=True)
+    phone = db.Column(db.String(20), nullable=True)
+    address = db.Column(db.Text, nullable=True)
+    vat_number = db.Column(db.String(64), nullable=True)  # B2B customer VAT
+    credit_limit = db.Column(db.Float, default=0)  # 0 = no limit
+    outstanding_balance = db.Column(db.Float, default=0)
+    barcode = db.Column(db.String(128), unique=True, nullable=True)  # Loyalty card barcode
+    registered_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='customers')
+
+
+class LoyaltyCard(db.Model):
+    """Loyalty card for customer rewards"""
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False, unique=True)
+    card_number = db.Column(db.String(64), unique=True, nullable=False)
+    points_balance = db.Column(db.Integer, default=0)
+    tier = db.Column(db.String(20), default='standard')  # standard, silver, gold, platinum
+    points_earned_total = db.Column(db.Integer, default=0)
+    points_redeemed_total = db.Column(db.Integer, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    customer = db.relationship('Customer', backref='loyalty_card', uselist=False)
+
+
+class LoyaltyPoints(db.Model):
+    """Points transaction history"""
+    id = db.Column(db.Integer, primary_key=True)
+    loyalty_card_id = db.Column(db.Integer, db.ForeignKey('loyalty_card.id'), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    points = db.Column(db.Integer, nullable=False)  # Positive for earned, negative for redeemed
+    earn_method = db.Column(db.String(20), nullable=False)  # product, order, amount
+    description = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    loyalty_card = db.relationship('LoyaltyCard', backref='points_history')
+
+
+class LoyaltyReward(db.Model):
+    """Rewards catalog: gifts or discounts for loyalty points"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)
+    description = db.Column(db.Text)
+    points_required = db.Column(db.Integer, nullable=False)
+    reward_type = db.Column(db.String(20), nullable=False)  # discount, gift, free_product
+    reward_value = db.Column(db.Float, nullable=True)  # Discount amount or free product ID
+    valid_until = db.Column(db.DateTime, nullable=True)
+    stock = db.Column(db.Integer, nullable=True)  # Available rewards
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='loyalty_rewards')
+
+
+class eWallet(db.Model):
+    """Customer e-wallet for prepaid balance"""
+    id = db.Column(db.Integer, primary_key=True)
+    customer_id = db.Column(db.Integer, db.ForeignKey('customer.id'), nullable=False, unique=True)
+    balance = db.Column(db.Float, default=0)
+    currency = db.Column(db.String(3), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    customer = db.relationship('Customer', backref='wallet', uselist=False)
+
+
+class eWalletTransaction(db.Model):
+    """e-Wallet transaction history"""
+    id = db.Column(db.Integer, primary_key=True)
+    ewallet_id = db.Column(db.Integer, db.ForeignKey('e_wallet.id'), nullable=False)
+    order_id = db.Column(db.Integer, db.ForeignKey('order.id'), nullable=True)
+    amount = db.Column(db.Float, nullable=False)  # Positive for top-up, negative for spending
+    transaction_type = db.Column(db.String(20), nullable=False)  # topup, purchase, refund
+    reference_id = db.Column(db.String(128), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    ewallet = db.relationship('eWallet', backref='transactions')
+
+
+class PriceList(db.Model):
+    """Dynamic pricing for products based on POS or customer type"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    name = db.Column(db.String(128), nullable=False)  # "Dine-in", "Takeaway", "VIP Customers"
+    pricelist_type = db.Column(db.String(20), nullable=False)  # dine_in, takeaway, customer_specific
+    valid_from = db.Column(db.DateTime, nullable=True)
+    valid_until = db.Column(db.DateTime, nullable=True)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='pricelists')
+    prices = db.relationship('PriceListItem', backref='pricelist', cascade='all, delete-orphan')
+
+
+class PriceListItem(db.Model):
+    """Price for a product in a specific pricelist"""
+    id = db.Column(db.Integer, primary_key=True)
+    pricelist_id = db.Column(db.Integer, db.ForeignKey('price_list.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    price = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    product = db.relationship('Product', backref='pricelist_items')
+
+
+# ============================================================================
+# STORE MANAGEMENT & HARDWARE
+# ============================================================================
+class CashierAccount(db.Model):
+    """Cashier-specific account with badge or PIN"""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    pin_code = db.Column(db.String(128), nullable=True)  # Hashed PIN for security
+    badge_id = db.Column(db.String(64), unique=True, nullable=True)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    user = db.relationship('User', backref='cashier_account', uselist=False)
+
+
+class CashRegister(db.Model):
+    """Physical cash register/drawer"""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    register_name = db.Column(db.String(64), nullable=False)
+    hardware_id = db.Column(db.String(64), unique=True, nullable=True)
+    current_cashier_id = db.Column(db.Integer, db.ForeignKey('cashier_account.id'), nullable=True)
+    opening_balance = db.Column(db.Float, default=0)
+    current_balance = db.Column(db.Float, default=0)
+    opened_at = db.Column(db.DateTime, nullable=True)
+    closed_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(20), default='closed')  # opened, closed
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='cash_registers')
+    current_cashier = db.relationship('CashierAccount')
+
+
+class CashFlow(db.Model):
+    """Cash register adjustments and daily reconciliation"""
+    id = db.Column(db.Integer, primary_key=True)
+    cash_register_id = db.Column(db.Integer, db.ForeignKey('cash_register.id'), nullable=False)
+    adjustment_type = db.Column(db.String(20), nullable=False)  # opening_balance, deposit, withdrawal, correction
+    amount = db.Column(db.Float, nullable=False)
+    reason = db.Column(db.Text)
+    recorded_by = db.Column(db.String(64))
+    expected_balance = db.Column(db.Float, nullable=True)  # For end-of-day reconciliation
+    actual_balance = db.Column(db.Float, nullable=True)
+    variance = db.Column(db.Float, nullable=True)  # Difference between expected and actual
+    recorded_at = db.Column(db.DateTime, default=datetime.utcnow)
+    cash_register = db.relationship('CashRegister', backref='cash_flows')
+
+
+class HardwareDevice(db.Model):
+    """Connected hardware: barcode scanners, payment terminals, scales, etc."""
+    id = db.Column(db.Integer, primary_key=True)
+    restaurant_id = db.Column(db.Integer, db.ForeignKey('restaurant.id'), nullable=False)
+    device_type = db.Column(db.String(20), nullable=False)  # barcode_scanner, payment_terminal, scale, cash_register
+    name = db.Column(db.String(64), nullable=False)
+    model = db.Column(db.String(64), nullable=True)
+    device_id = db.Column(db.String(128), unique=True, nullable=True)  # MAC address or serial
+    connection_type = db.Column(db.String(20), nullable=False)  # usb, network, bluetooth
+    ip_address = db.Column(db.String(15), nullable=True)  # For network devices
+    status = db.Column(db.String(20), default='disconnected')  # connected, disconnected, error
+    last_seen = db.Column(db.DateTime, nullable=True)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    restaurant = db.relationship('Restaurant', backref='hardware_devices')
+

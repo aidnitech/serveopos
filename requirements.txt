@@ -6,3 +6,6 @@ Flask-Login
 Flask-WTF
 requests
 Flask-Babel
+python-barcode
+python-dateutil
+pytz

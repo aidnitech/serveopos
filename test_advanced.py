@@ -21,24 +21,32 @@ client = app.test_client()
 def setup_test_data():
     """Initialize test database with users, items, and permissions"""
     with app.app_context():
-        db.drop_all()
-        db.create_all()
-        
+        # Instead of dropping the schema, clear data and reseed expected rows
+        try:
+            for table in reversed(db.metadata.sorted_tables):
+                try:
+                    db.session.execute(table.delete())
+                except Exception:
+                    pass
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+
         # Create users with different roles
         admin = User(username="admin", password_hash=generate_password_hash("admin"), role="admin")
         manager = User(username="manager", password_hash=generate_password_hash("manager"), role="manager")
         waiter = User(username="waiter", password_hash=generate_password_hash("waiter"), role="waiter")
         kitchen = User(username="kitchen", password_hash=generate_password_hash("kitchen"), role="kitchen")
         db.session.add_all([admin, manager, waiter, kitchen])
-        
+
         # Create menu items
         db.session.add(MenuItem(name="Sizzler", description="Hot platter", price=45.0))
         db.session.add(MenuItem(name="Pasta", description="Creamy pasta", price=35.0))
-        
+
         # Create inventory items
         db.session.add(InventoryItem(name="Chicken", quantity=50, unit="kg"))
         db.session.add(InventoryItem(name="Oil", quantity=20, unit="liters"))
-        
+
         db.session.commit()
 
 def login_as(username, password):

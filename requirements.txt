@@ -76,7 +76,7 @@ cryptography==44.0.1
 packaging==25.0
 setuptools==80.9.0
 six==1.17.0
-typedict==1.0.0
+typedict
 
 # Optional: Add these for production monitoring
 # gunicorn==23.0.0  # WSGI HTTP Server (recommended for PythonAnywhere)

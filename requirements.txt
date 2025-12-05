@@ -1,12 +1,3 @@
-Flask
-Flask-SQLAlchemy
-Flask-Migrate
-Flask-Limiter
-Flask-Login
-Flask-WTF
-requests
-Flask-Babel
-python-barcode
-python-dateutil
-pytz
-gunicorn
+gunicorn==23.0.0
+packaging==25.0
+typedict==0.1.0

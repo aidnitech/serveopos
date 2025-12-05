@@ -9,4 +9,4 @@ Flask-Babel
 python-barcode
 python-dateutil
 pytz
-gunicorn==23.0.0
+gunicorn

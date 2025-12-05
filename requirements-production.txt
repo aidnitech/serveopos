@@ -79,5 +79,5 @@ six==1.17.0
 typedict
 
 # Optional: Add these for production monitoring
-# gunicorn==23.0.0  # WSGI HTTP Server (recommended for PythonAnywhere)
-# whitenoise==6.8.1  # Static file serving
+gunicorn  # WSGI HTTP Server (recommended for PythonAnywhere)
+whitenoise==6.8.1  # Static file serving

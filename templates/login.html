@@ -1,17 +1,115 @@
 {% extends "base.html" %}
-{% block title %}Login{% endblock %}
+{% block title %}Login - ServeoPOS{% endblock %}
 {% block content %}
-<h1 class="mb-4">Login</h1>
-<form method="POST" action="{{ url_for('auth.login') }}">
-  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <div class="mb-3">
-    <label for="username" class="form-label">Username</label>
-    <input type="text" name="username" class="form-control" required>
+<div class="container d-flex align-items-center justify-content-center" style="min-height: calc(100vh - 300px);">
+  <div class="col-md-6 col-lg-4">
+    <div class="card shadow-lg border-0">
+      <div class="card-body p-5">
+        <!-- Header -->
+        <div class="text-center mb-4">
+          <img src="{{ url_for('static', filename='serveopos.png') }}" alt="ServeoPOS" height="60" class="mb-3">
+          <h3 class="card-title mb-1">ServeoPOS</h3>
+          <p class="text-muted small">Restaurant POS & Management System</p>
+        </div>
+        
+        <!-- Login Form -->
+        <form method="POST" action="{{ url_for('auth.login') }}" class="mt-4">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          
+          <!-- Username -->
+          <div class="mb-3">
+            <label for="username" class="form-label fw-600">Username</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-0" style="color: #1a472a;">
+                <i class="bi bi-person"></i>
+              </span>
+              <input 
+                type="text" 
+                name="username" 
+                id="username" 
+                class="form-control border-0 bg-light" 
+                placeholder="Enter your username"
+                required 
+                autofocus
+              >
+            </div>
+          </div>
+          
+          <!-- Password -->
+          <div class="mb-4">
+            <label for="password" class="form-label fw-600">Password</label>
+            <div class="input-group">
+              <span class="input-group-text bg-light border-0" style="color: #1a472a;">
+                <i class="bi bi-lock"></i>
+              </span>
+              <input 
+                type="password" 
+                name="password" 
+                id="password" 
+                class="form-control border-0 bg-light" 
+                placeholder="Enter your password"
+                required
+              >
+            </div>
+          </div>
+          
+          <!-- Submit Button -->
+          <button type="submit" class="btn btn-lg w-100" style="background-color: #1a472a; color: white; font-weight: 600;">
+            <i class="bi bi-box-arrow-in-right"></i> Sign In
+          </button>
+        </form>
+        
+        <!-- Demo Credentials (for Beta) -->
+        <div class="alert alert-info mt-4 mb-0">
+          <small class="d-block">
+            <strong>📌 Beta Testing Credentials:</strong>
+          </small>
+          <small class="d-block mt-2">
+            <strong>Super Admin:</strong> superadmin / superadmin@123
+          </small>
+          <small class="d-block">
+            <strong>Restaurant Admin:</strong> sizzlecraft_admin / sizzlecraft@admin123
+          </small>
+          <small class="d-block">
+            <strong>Manager:</strong> sizzlecraft_manager / manager@123
+          </small>
+          <small class="d-block">
+            <strong>Chef:</strong> sizzlecraft_chef_1 / chef@123
+          </small>
+          <small class="d-block">
+            <strong>Waiter:</strong> sizzlecraft_waiter_1 / waiter@123
+          </small>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Footer Info -->
+    <div class="text-center mt-4">
+      <small class="text-muted">
+        <i class="bi bi-shield-lock"></i> Secured by Aidni Global LLP<br>
+        <strong>Beta Version 1.0</strong>
+      </small>
+    </div>
   </div>
-  <div class="mb-3">
-    <label for="password" class="form-label">Password</label>
-    <input type="password" name="password" class="form-control" required>
-  </div>
-  <button type="submit" class="btn btn-primary">Login</button>
-</form>
+</div>
+
+<style>
+  .form-label {
+    color: #1a472a;
+    font-size: 14px;
+  }
+  
+  .input-group-text {
+    border: none !important;
+  }
+  
+  .form-control:focus {
+    border-color: #1a472a !important;
+    box-shadow: 0 0 0 0.2rem rgba(26, 71, 42, 0.25) !important;
+  }
+  
+  .btn:hover {
+    background-color: #2d5f3d !important;
+  }
+</style>
 {% endblock %}

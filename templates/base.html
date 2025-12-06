@@ -3,63 +3,356 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}ServeoPOS{% endblock %}</title>
+  <title>{% block title %}ServeoPOS - Restaurant POS & Management{% endblock %}</title>
   <meta name="csrf-token" content="{{ csrf_token() }}">
+  <meta name="description" content="ServeoPOS - Enterprise Restaurant POS & Management System by Aidni Global LLP">
   {% if current_user.is_authenticated %}
     <meta name="user-id" content="{{ current_user.id }}">
     <meta name="user-currency" content="{{ current_user.currency or 'USD' }}">
     <meta name="user-locale" content="{{ current_user.locale or '' }}">
+    <meta name="user-role" content="{{ current_user.role }}">
+    <meta name="user-restaurant" content="{{ current_user.restaurant_id or '' }}">
   {% endif %}
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
   <link rel="icon" href="{{ url_for('static', filename='serveopos.png') }}" type="image/png">
+  <style>
+    :root {
+      --primary-color: #1a472a;
+      --secondary-color: #2d5f3d;
+      --accent-color: #d4a574;
+    }
+    
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+      background-color: #f8f9fa;
+    }
+    
+    /* Header Styles */
+    .header-top {
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+      color: white;
+      padding: 15px 0;
+      border-bottom: 3px solid var(--accent-color);
+    }
+    
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+    
+    .header-brand img {
+      height: 40px;
+      width: auto;
+    }
+    
+    .header-brand span {
+      color: var(--accent-color);
+      font-size: 14px;
+      font-weight: 500;
+    }
+    
+    /* Navbar Styles */
+    .navbar-custom {
+      background-color: var(--primary-color);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .navbar-custom .nav-link {
+      color: rgba(255,255,255,0.85) !important;
+      margin: 0 8px;
+      transition: all 0.3s ease;
+      border-bottom: 2px solid transparent;
+      padding: 8px 12px !important;
+    }
+    
+    .navbar-custom .nav-link:hover {
+      color: var(--accent-color) !important;
+      border-bottom-color: var(--accent-color);
+    }
+    
+    .navbar-custom .nav-link.active {
+      color: var(--accent-color) !important;
+      border-bottom-color: var(--accent-color);
+    }
+    
+    .user-badge {
+      background-color: var(--accent-color);
+      color: var(--primary-color);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-left: 10px;
+    }
+    
+    /* Main Content */
+    .main-content {
+      flex: 1;
+      padding: 20px 0;
+    }
+    
+    /* Footer Styles */
+    footer {
+      background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+      color: rgba(255,255,255,0.9);
+      padding: 40px 0 20px;
+      margin-top: 50px;
+      border-top: 3px solid var(--accent-color);
+    }
+    
+    footer .footer-section h6 {
+      color: var(--accent-color);
+      font-weight: 600;
+      margin-bottom: 15px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    footer .footer-section p,
+    footer .footer-section a {
+      font-size: 13px;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.85);
+      text-decoration: none;
+    }
+    
+    footer .footer-section a:hover {
+      color: var(--accent-color);
+    }
+    
+    .footer-divider {
+      border-top: 1px solid rgba(255,255,255,0.2);
+      margin: 20px 0;
+      padding-top: 20px;
+    }
+    
+    .copyright {
+      text-align: center;
+      font-size: 12px;
+      color: rgba(255,255,255,0.7);
+      padding-top: 15px;
+      border-top: 1px solid rgba(255,255,255,0.1);
+    }
+    
+    /* Alert Styles */
+    .alert {
+      border-radius: 6px;
+      border: none;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .header-brand {
+        font-size: 16px;
+      }
+      
+      .header-brand img {
+        height: 35px;
+      }
+      
+      .user-badge {
+        margin-left: 0;
+        margin-top: 8px;
+        display: inline-block;
+      }
+    }
+  </style>
 </head>
 <body>
-    <header class="bg-light">
-      <div class="container-fluid p-0">
-        <img src="/static/banner.svg" alt="ServeoPOS" style="width:100%;height:auto;display:block;">
-      </div>
-    </header>
-  <!-- Navbar -->
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+  <!-- Header -->
+  <header class="header-top">
     <div class="container-fluid">
-      <a class="navbar-brand" href="/" aria-label="ServeoPOS">
-        <img src="{{ url_for('static', filename='serveopos.png') }}" alt="ServeoPOS" height="50" class="d-inline-block align-text-top me-2">
-        <span class="visually-hidden">ServeoPOS</span>
+      <div class="row align-items-center">
+        <div class="col-md-6">
+          <div class="header-brand">
+            <img src="{{ url_for('static', filename='serveopos.png') }}" alt="ServeoPOS">
+            <div>
+              <div>ServeoPOS</div>
+              <span>by Aidni Global LLP</span>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6 text-end">
+          {% if current_user.is_authenticated %}
+            <small style="color: rgba(255,255,255,0.8);">
+              <i class="bi bi-person-circle"></i>
+              Logged in as: <strong>{{ current_user.username }}</strong>
+              {% if current_user.role == 'super_admin' %}
+                <span class="badge bg-danger">PLATFORM ADMIN</span>
+              {% elif current_user.role == 'restaurant_admin' %}
+                <span class="badge bg-info">RESTAURANT ADMIN</span>
+              {% elif current_user.role == 'manager' %}
+                <span class="badge bg-warning">MANAGER</span>
+              {% elif current_user.role == 'kitchen' %}
+                <span class="badge bg-secondary">KITCHEN STAFF</span>
+              {% elif current_user.role == 'waiter' %}
+                <span class="badge bg-success">WAITER</span>
+              {% endif %}
+            </small>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Menu -->
+  <nav class="navbar navbar-expand-lg navbar-custom sticky-top">
+    <div class="container-fluid">
+      <a class="navbar-brand d-lg-none" href="/">
+        <i class="bi bi-shop"></i> ServeoPOS
       </a>
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
         <ul class="navbar-nav ms-auto">
           {% if current_user.is_authenticated %}
-            {% if current_user.role in ["admin", "manager"] %}
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('admin.dashboard') }}">{{ _('Admin') }}</a></li>
+            <!-- Super Admin Menu -->
+            {% if current_user.role == 'super_admin' %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
+                  <i class="bi bi-shield-lock"></i> Admin Panel
+                </a>
+                <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                  <li><a class="dropdown-item" href="{{ url_for('admin.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-building"></i> Manage Restaurants</a></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-people"></i> Manage Users</a></li>
+                </ul>
+              </li>
+            <!-- Restaurant Admin / Manager Menu -->
+            {% elif current_user.role in ['restaurant_admin', 'manager'] %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown">
+                  <i class="bi bi-gear"></i> Management
+                </a>
+                <ul class="dropdown-menu" aria-labelledby="adminDropdown">
+                  <li><a class="dropdown-item" href="{{ url_for('admin.dashboard') }}"><i class="bi bi-speedometer2"></i> Dashboard</a></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-book"></i> Menu Management</a></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-box-seam"></i> Inventory</a></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-people"></i> Staff Management</a></li>
+                  <li><hr class="dropdown-divider"></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-graph-up"></i> Analytics</a></li>
+                  <li><a class="dropdown-item" href="#"><i class="bi bi-receipt"></i> Reports</a></li>
+                </ul>
+              </li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('pos.pos_home') }}"><i class="bi bi-bag-check"></i> POS</a></li>
             {% endif %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('menu.show_menu') }}">{{ _('Menu') }}</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('pos.pos_home') }}">{{ _('POS') }}</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.logout') }}">{{ _('Logout') }} ({{ current_user.username }})</a></li>
+            
+            <!-- Waiter / Kitchen Menu -->
+            {% if current_user.role == 'waiter' %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('pos.pos_home') }}"><i class="bi bi-bag-check"></i> POS System</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('menu.show_menu') }}"><i class="bi bi-book"></i> Menu</a></li>
+            {% elif current_user.role == 'kitchen' %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('kds.kds_home') }}"><i class="bi bi-fire"></i> Kitchen Display</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('kds.pending_orders') }}"><i class="bi bi-list-check"></i> Orders</a></li>
+            {% endif %}
+            
+            <!-- Common Menu Items -->
+            {% if current_user.role in ['super_admin', 'restaurant_admin', 'manager'] %}
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('analytics.sales_summary') }}"><i class="bi bi-graph-up"></i> Analytics</a></li>
+            {% endif %}
+            
+            <!-- User Settings Dropdown -->
+            <li class="nav-item dropdown ms-2">
+              <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+                <i class="bi bi-person-circle"></i> Settings
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+                <li><a class="dropdown-item" href="#"><i class="bi bi-gear"></i> User Settings</a></li>
+                <li><a class="dropdown-item" href="#"><i class="bi bi-key"></i> Change Password</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="{{ url_for('auth.logout') }}"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+              </ul>
+            </li>
           {% else %}
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('menu.show_menu') }}">{{ _('Menu') }}</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('pos.pos_home') }}">{{ _('POS') }}</a></li>
-            <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.login') }}">{{ _('Login') }}</a></li>
+            <!-- Unauthenticated Menu -->
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('auth.login') }}"><i class="bi bi-box-arrow-in-right"></i> Login</a></li>
           {% endif %}
         </ul>
       </div>
     </div>
   </nav>
 
-  <div class="container mt-4">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="alert alert-{{ category }}">{{ message }}</div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
+  <!-- Main Content -->
+  <div class="main-content">
+    <div class="container">
+      <!-- Flash Messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+              <i class="bi bi-exclamation-circle"></i> {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
 
-    {% block content %}{% endblock %}
+      {% block content %}{% endblock %}
+    </div>
   </div>
 
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <div class="row">
+        <div class="col-md-4 footer-section">
+          <h6>About ServeoPOS</h6>
+          <p>
+            Enterprise-grade restaurant POS & management system with multi-tenant support, 
+            advanced inventory control, and comprehensive analytics.
+          </p>
+          <p><strong>Version:</strong> Beta 1.0</p>
+        </div>
+        
+        <div class="col-md-4 footer-section">
+          <h6>Company Info</h6>
+          <p>
+            <strong>Aidni Global LLP</strong><br>
+            India
+          </p>
+          <p>
+            <strong>Gaatha Ventures SRL</strong><br>
+            Romania
+          </p>
+        </div>
+        
+        <div class="col-md-4 footer-section">
+          <h6>Contact Us</h6>
+          <p>
+            <i class="bi bi-envelope"></i> 
+            <a href="mailto:office@aidniglobal.in">office@aidniglobal.in</a>
+          </p>
+          <p>
+            <i class="bi bi-telephone"></i> 
+            Available during business hours
+          </p>
+          <p>
+            <small><strong>⚠️ Beta Launch</strong> - Report issues to support</small>
+          </p>
+        </div>
+      </div>
+      
+      <div class="footer-divider"></div>
+      
+      <div class="copyright">
+        <p>&copy; 2025 Aidni Global LLP, IN & Gaatha Ventures SRL, Romania. All rights reserved.</p>
+        <p style="margin-top: 8px; font-size: 11px;">ServeoPOS Beta | Not for Production Use Without Authorization</p>
+      </div>
+    </div>
+  </footer>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
